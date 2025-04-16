@@ -1,0 +1,9 @@
+2025-04-08 21:57:48,734 - INFO - 标签总数: 13
+2025-04-08 21:57:48,735 - INFO - 标签列表: ['B-Anatomical', 'B-Diseases', 'B-Drug', 'B-Image', 'B-Laboratory', 'B-Operation', 'I-Anatomical', 'I-Diseases', 'I-Drug', 'I-Image', 'I-Laboratory', 'I-Operation', 'O']
+2025-04-08 21:57:48,735 - INFO - 正在准备数据增强...
+2025-04-08 21:57:48,756 - DEBUG - Building prefix dict from the default dictionary ...
+2025-04-08 21:57:48,757 - DEBUG - Loading model from cache C:\Users\27162\AppData\Local\Temp\jieba.cache
+2025-04-08 21:57:49,772 - DEBUG - Loading model cost 1.015 seconds.
+2025-04-08 21:57:49,773 - DEBUG - Prefix dict has been built successfully.
+2025-04-08 21:57:51,817 - INFO - 数据增强完成: 原始样本数 6837, 增强后样本数 11670
+2025-04-08 21:57:52,497 - INFO - 使用增强版BERT-Attention-CRF模型

@@ -1,0 +1,21 @@
+2025-04-05 21:51:05,890 - INFO - 标签总数: 13
+2025-04-05 21:51:05,891 - INFO - 标签列表: ['B-Anatomical', 'B-Diseases', 'B-Drug', 'B-Image', 'B-Laboratory', 'B-Operation', 'I-Anatomical', 'I-Diseases', 'I-Drug', 'I-Image', 'I-Laboratory', 'I-Operation', 'O']
+2025-04-05 21:51:05,891 - INFO - 正在准备数据增强...
+2025-04-05 21:51:05,914 - DEBUG - Building prefix dict from the default dictionary ...
+2025-04-05 21:51:05,915 - DEBUG - Loading model from cache C:\Users\27162\AppData\Local\Temp\jieba.cache
+2025-04-05 21:51:07,064 - DEBUG - Loading model cost 1.150 seconds.
+2025-04-05 21:51:07,064 - DEBUG - Prefix dict has been built successfully.
+2025-04-05 21:51:09,070 - INFO - 数据增强完成: 原始样本数 6837, 增强后样本数 11670
+2025-04-05 21:51:09,653 - INFO - 使用标准BERT-CRF模型
+2025-04-05 21:51:33,099 - INFO - Epoch: 1/20, Step: 100/365, Loss: 1.2540, LR: 4.11e-06
+2025-04-05 21:51:50,537 - INFO - Epoch: 1/20, Step: 200/365, Loss: 1.2533, LR: 8.22e-06
+2025-04-05 21:52:07,903 - INFO - Epoch: 1/20, Step: 300/365, Loss: 1.0320, LR: 1.23e-05
+2025-04-05 21:52:42,091 - INFO - Epoch: 2/20, Step: 100/365, Loss: 1.0305, LR: 1.91e-05
+2025-04-05 21:53:00,199 - INFO - Epoch: 2/20, Step: 200/365, Loss: 0.8794, LR: 2.32e-05
+2025-04-05 21:53:18,094 - INFO - Epoch: 2/20, Step: 300/365, Loss: 0.8241, LR: 2.73e-05
+2025-04-05 21:53:53,105 - INFO - Epoch: 3/20, Step: 100/365, Loss: 0.8887, LR: 2.95e-05
+2025-04-05 21:54:10,727 - INFO - Epoch: 3/20, Step: 200/365, Loss: 0.8459, LR: 2.91e-05
+2025-04-05 21:54:28,533 - INFO - Epoch: 3/20, Step: 300/365, Loss: 0.8005, LR: 2.86e-05
+2025-04-05 21:55:04,048 - INFO - Epoch: 4/20, Step: 100/365, Loss: 0.8104, LR: 2.79e-05
+2025-04-05 21:55:21,405 - INFO - Epoch: 4/20, Step: 200/365, Loss: 0.8707, LR: 2.74e-05
+2025-04-05 21:55:38,729 - INFO - Epoch: 4/20, Step: 300/365, Loss: 0.7726, LR: 2.70e-05

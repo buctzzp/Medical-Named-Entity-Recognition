@@ -1,0 +1,12 @@
+              precision    recall  f1-score   support
+
+  Anatomical     0.8084    0.8337    0.8209       896
+    Diseases     0.7424    0.8109    0.7751       423
+        Drug     0.8696    0.8955    0.8824       201
+       Image     0.8393    0.9216    0.8785       102
+  Laboratory     0.8425    0.8106    0.8263       132
+   Operation     0.8247    0.8791    0.8511        91
+
+   micro avg     0.8040    0.8407    0.8219      1845
+   macro avg     0.8212    0.8586    0.8390      1845
+weighted avg     0.8049    0.8407    0.8221      1845

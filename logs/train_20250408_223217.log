@@ -1,0 +1,7 @@
+2025-04-08 22:32:18,435 - INFO - 标签总数: 13
+2025-04-08 22:32:18,436 - INFO - 标签列表: ['B-Anatomical', 'B-Diseases', 'B-Drug', 'B-Image', 'B-Laboratory', 'B-Operation', 'I-Anatomical', 'I-Diseases', 'I-Drug', 'I-Image', 'I-Laboratory', 'I-Operation', 'O']
+2025-04-08 22:32:18,799 - INFO - 使用增强版BERT-Attention-CRF模型
+2025-04-08 22:32:20,097 - INFO - 模型结构配置:
+2025-04-08 22:32:20,102 - INFO -   - 隐藏层大小: 256
+2025-04-08 22:32:20,102 - INFO -   - LSTM层数: 5
+2025-04-08 22:32:20,103 - INFO -   - Dropout率: 0.1
