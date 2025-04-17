@@ -2,6 +2,7 @@
 
 import os
 import torch
+import logging
 import argparse
 import numpy as np
 import pandas as pd
@@ -10,171 +11,305 @@ import seaborn as sns
 from torch.utils.data import DataLoader
 from transformers import BertTokenizerFast
 from model.bert_crf_model import BertCRF
-from utils import NERDataset, get_label_list
+from model.bert_attention_crf_model import BertAttentionCRF
+from utils import NERDataset, get_label_list, read_data_from_file, filter_special_tokens
 from seqeval.metrics import classification_report, f1_score, precision_score, recall_score
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 from tqdm import tqdm
 from config import model_config
+from model.model_factory import ModelFactory
+import json
+from datetime import datetime
 
 # 命令行参数解析
-parser = argparse.ArgumentParser(description='医学命名实体识别评估工具')
-parser.add_argument('--data', type=str, default=model_config['test_path'], help='评估数据集路径')
-parser.add_argument('--model', type=str, default=model_config['final_model_path'], help='模型路径')
+parser = argparse.ArgumentParser(description='中文医疗NER模型评估工具')
+parser.add_argument('--data', type=str, default=model_config['test_path'], help='要评估的数据集路径')
+parser.add_argument('--model', type=str, default=model_config['best_model_path'], help='模型路径')
 parser.add_argument('--batch_size', type=int, default=model_config['eval_batch_size'], help='评估批次大小')
-parser.add_argument('--output', type=str, default='results', help='输出目录')
+parser.add_argument('--output', type=str, default='results/evaluation', help='结果输出目录')
 parser.add_argument('--confusion_matrix', action='store_true', help='是否生成混淆矩阵')
+parser.add_argument('--pretrained_model', type=str, default='bert-base-chinese', 
+                    help='预训练模型名称，可选：bert-base-chinese, chinese-medical-bert, pcl-medbert, cmeee-bert, mc-bert, chinese-roberta-med')
+parser.add_argument('--use_attention', action='store_true', help='是否使用注意力模型')
+parser.add_argument('--use_bilstm', action='store_true', help='是否使用BiLSTM层')
 args = parser.parse_args()
 
-# 加载模型和标签映射
-tokenizer = BertTokenizerFast.from_pretrained(model_config['bert_model_name'])
-label_list = get_label_list([
-    model_config['train_path'], 
-    model_config['dev_path'], 
-    model_config['test_path']
-])
+# 创建必要的目录
+os.makedirs(args.output, exist_ok=True)
+
+# 设置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(args.output, 'evaluation.log')),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# 记录评估配置信息
+logger.info("="*50)
+logger.info("医学命名实体识别模型评估开始")
+logger.info("="*50)
+logger.info(f"评估数据集: {args.data}")
+logger.info(f"模型路径: {args.model}")
+logger.info(f"预训练模型: {args.pretrained_model}")
+logger.info(f"批次大小: {args.batch_size}")
+logger.info(f"结果输出目录: {args.output}")
+logger.info(f"是否生成混淆矩阵: {args.confusion_matrix}")
+logger.info("="*50)
+
+# 检测GPU
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+logger.info(f"使用设备: {device}")
+
+# 使用ModelFactory获取与指定预训练模型匹配的tokenizer
+tokenizer = ModelFactory.get_tokenizer_for_model(args.pretrained_model)
+
+# 加载数据集
+logger.info("加载评估数据集...")
+test_texts, test_tags = read_data_from_file(args.data)
+logger.info(f"Loaded {len(test_texts)} evaluation samples")
+
+# 构建标签映射
+label_list = get_label_list([args.data])
 label2id = {label: i for i, label in enumerate(label_list)}
 id2label = {i: label for label, i in label2id.items()}
+num_labels = len(label_list)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"使用设备: {device}")
+logger.info(f"标签总数: {num_labels}")
+logger.info(f"标签列表: {label_list}")
 
 # 加载模型
-model = BertCRF(model_config['bert_model_name'], len(label_list))
-model.load_state_dict(torch.load(args.model, map_location=device, weights_only=True))
+logger.info(f"加载模型: {args.model}")
+# 根据参数选择模型类型
+if args.use_attention:
+    model = BertAttentionCRF.from_pretrained(
+        args.pretrained_model,
+        num_labels=num_labels,
+        use_bilstm=args.use_bilstm,
+        lstm_hidden_size=model_config['lstm_hidden_size'],
+        lstm_layers=model_config['lstm_layers'],
+        lstm_dropout=model_config['lstm_dropout'],
+        attention_size=model_config['attention_size'],
+        num_attention_heads=model_config['num_attention_heads'],
+        attention_dropout=model_config['attention_dropout'],
+        hidden_dropout=model_config['hidden_dropout']
+    )
+else:
+    model = BertCRF.from_pretrained(
+        args.pretrained_model,
+        num_labels=num_labels,
+        use_bilstm=args.use_bilstm,
+        lstm_hidden_size=model_config['lstm_hidden_size'],
+        lstm_layers=model_config['lstm_layers'],
+        lstm_dropout=model_config['lstm_dropout']
+    )
+
+# 加载预训练权重
+model.load_state_dict(torch.load(args.model, map_location=device))
 model.to(device)
 model.eval()
 
-# 加载测试数据
-print(f"评估数据集: {args.data}")
-test_dataset = NERDataset(args.data, tokenizer, label2id, model_config['max_len'])
-test_loader = DataLoader(test_dataset, batch_size=args.batch_size)
+logger.info("开始评估...")
 
-true_labels = []
-predictions = []
-all_true_labels_flat = []
-all_pred_labels_flat = []
-all_char_preds = []  # 收集所有预测（用于写入简洁版本）
+# 用于收集所有的真实标签和预测标签
+all_true_labels = []
+all_pred_labels = []
+samples_with_errors = []
+all_words = []
 
-# 创建输出目录
-os.makedirs(args.output, exist_ok=True)
-verbose_output_path = os.path.join(args.output, "test_predictions_verbose.txt")
-simple_output_path = os.path.join(args.output, "test_predictions.txt")
-
-# 打开详细输出文件
-with open(verbose_output_path, "w", encoding="utf-8") as fout:
-    # 格式化输出表头
-    fout.write("{:<6}{:<8}{:<15}{:<15}{}\n".format("位置", "字符", "真实标签", "预测标签", "是否正确"))
-    fout.write("-" * 60 + "\n")
-    
-    # 使用tqdm显示进度条
-    for batch in tqdm(test_loader, desc="评估进度"):
-        batch = {k: v.to(device) for k, v in batch.items()}
+with torch.no_grad():
+    for batch in tqdm(test_texts, desc="评估进度"):
+        # 从数据集中获取原始文本和标签
+        words = batch
+        input_ids = tokenizer(
+            words,
+            is_split_into_words=True,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=model_config['max_len']
+        )["input_ids"].to(device)
+        attention_mask = tokenizer(
+            words,
+            is_split_into_words=True,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=model_config['max_len']
+        )["attention_mask"].to(device)
+        true_label_ids = [label2id[tag] for tag in test_tags if tag in label2id]
         
-        with torch.no_grad():
-            pred_ids_batch = model(batch['input_ids'], batch['attention_mask'], batch['token_type_ids'])
+        # 前向传播
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
         
-        # 处理批次中的每个样本
-        for i in range(batch['input_ids'].size(0)):
-            input_ids = batch['input_ids'][i]
-            label_ids = batch['labels'][i].tolist()
-            pred_ids = pred_ids_batch[i]
+        # 获取预测结果
+        pred_label_ids = outputs.argmax(dim=2).cpu().numpy()[0]
+        
+        # 处理结果 (移除padding，并转换回标签文本)
+        for i in range(len(true_label_ids)):
+            true_seq = [id2label[id] for id in true_label_ids[i] if id != -100]
+            pred_seq = [id2label[id] for id, true_id in zip(pred_label_ids[i], true_label_ids[i]) if true_id != -100]
             
-            tokens = tokenizer.convert_ids_to_tokens(input_ids)
+            if len(true_seq) != len(pred_seq):
+                # 这种情况不应该发生，但为了安全起见
+                logger.warning(f"长度不匹配: 真实标签长度 {len(true_seq)}, 预测标签长度 {len(pred_seq)}")
+                continue
             
-            true_seq = []
-            pred_seq = []
-            char_seq = []
+            all_true_labels.append(true_seq)
+            all_pred_labels.append(pred_seq)
             
-            for token, true_id, pred_id in zip(tokens, label_ids, pred_ids):
-                if token in ["[CLS]", "[SEP]", "[PAD]"]:
-                    continue
-                if true_id == -100:
-                    continue
-                    
-                true_label = id2label[true_id]
-                pred_label = id2label[pred_id]
-                token_char = token.replace("##", "")
-                
-                true_seq.append(true_label)
-                pred_seq.append(pred_label)
-                char_seq.append(token_char)
-                
-                # 收集用于混淆矩阵的标签
-                all_true_labels_flat.append(true_label)
-                all_pred_labels_flat.append(pred_label)
+            # 收集单词
+            word_seq = words[i][:len(true_seq)]
+            all_words.append(word_seq)
             
-            if len(true_seq) > 0:
-                true_labels.append(true_seq)
-                predictions.append(pred_seq)
-                all_char_preds.append(list(zip(char_seq, pred_seq)))
-                
-                # 写入详细预测结果
-                for j, (ch, tl, pl) in enumerate(zip(char_seq, true_seq, pred_seq)):
-                    mark = "✓" if tl == pl else "✗"
-                    fout.write("{:<6}{:<8}{:<15}{:<15}{}\n".format(j, ch, tl, pl, mark))
-                fout.write("\n")
+            # 收集包含错误的样本
+            if true_seq != pred_seq:
+                errors = []
+                for w, t, p in zip(word_seq, true_seq, pred_seq):
+                    if t != p:
+                        errors.append(f"{w} [真: {t}, 预: {p}]")
+                samples_with_errors.append({
+                    'words': ' '.join(word_seq),
+                    'true_labels': ' '.join(true_seq),
+                    'pred_labels': ' '.join(pred_seq),
+                    'errors': ' | '.join(errors)
+                })
 
-# 计算并打印评估指标
-print("\n================== 分类指标报告 ==================")
-report = classification_report(true_labels, predictions, digits=4)
-print(report)
+# 计算评估指标
+precision = precision_score(all_true_labels, all_pred_labels)
+recall = recall_score(all_true_labels, all_pred_labels)
+f1 = f1_score(all_true_labels, all_pred_labels)
+report = classification_report(all_true_labels, all_pred_labels)
 
-# 计算总体指标
-p = precision_score(true_labels, predictions)
-r = recall_score(true_labels, predictions)
-f1 = f1_score(true_labels, predictions)
-print(f"\n总体指标 - 精确率: {p:.4f}, 召回率: {r:.4f}, F1分数: {f1:.4f}")
+# 输出结果
+result_text = f"""
+评估结果:
+数据集: {args.data}
+模型: {args.model}
+预训练模型: {args.pretrained_model}
+模型类型: {'BERT-Attention-CRF' if args.use_attention else 'BERT-CRF'}
+BiLSTM: {'启用' if args.use_bilstm else '禁用'}
 
-# 保存分类报告到文件
-report_path = os.path.join(args.output, "classification_report.txt")
-with open(report_path, "w", encoding="utf-8") as f:
-    f.write(report)
-    f.write(f"\n总体指标 - 精确率: {p:.4f}, 召回率: {r:.4f}, F1分数: {f1:.4f}")
+样本数: {len(all_true_labels)}
+Precision: {precision:.4f}
+Recall: {recall:.4f}
+F1 Score: {f1:.4f}
 
-# 保存精简预测结果（完整句子+标签）
-with open(simple_output_path, "w", encoding="utf-8") as f:
-    for char_label_pair in all_char_preds:
-        for ch, label in char_label_pair:
-            f.write(f"{ch}\t{label}\n")
+分类报告:
+{report}
+"""
+
+logger.info(result_text)
+
+# 保存结果到文件
+with open(os.path.join(args.output, 'classification_report.json'), 'w', encoding='utf-8') as f:
+    json.dump(classification_report(all_true_labels, all_pred_labels, digits=4, output_dict=True), f, ensure_ascii=False, indent=4)
+logger.info("分类报告已保存到 classification_report.json")
+
+# 保存预测结果
+predictions_path = os.path.join(args.output, 'predictions.txt')
+with open(predictions_path, 'w', encoding='utf-8') as f:
+    for words, true_labels, pred_labels in zip(all_words, all_true_labels, all_pred_labels):
+        for w, t, p in zip(words, true_labels, pred_labels):
+            f.write(f"{w} {t} {p}\n")
         f.write("\n")
 
-# 生成混淆矩阵（如果需要）
-if args.confusion_matrix and len(set(all_true_labels_flat)) > 1:
-    # 获取唯一标签（按字母顺序排序）
-    unique_labels = sorted(set(all_true_labels_flat))
+logger.info(f"预测结果已保存到: {predictions_path}")
+
+# 如果需要，创建混淆矩阵
+if args.confusion_matrix:
+    logger.info("生成混淆矩阵...")
+    
+    # 准备数据
+    unique_labels = sorted(list(set([label for labels in all_true_labels for label in labels])))
+    true_flattened = [label for labels in all_true_labels for label in labels]
+    pred_flattened = [label for labels in all_pred_labels for label in labels]
     
     # 计算混淆矩阵
-    cm = confusion_matrix(all_true_labels_flat, all_pred_labels_flat, labels=unique_labels)
+    cm = confusion_matrix(true_flattened, pred_flattened, labels=unique_labels)
     
-    # 创建DataFrame以便于可视化
-    cm_df = pd.DataFrame(cm, index=unique_labels, columns=unique_labels)
-    
-    # 绘制混淆矩阵热图
-    plt.figure(figsize=(12, 10))
-    sns.heatmap(cm_df, annot=True, fmt="d", cmap="Blues")
-    plt.title("NER标签混淆矩阵")
-    plt.ylabel("真实标签")
-    plt.xlabel("预测标签")
+    # 使用Seaborn创建热图
+    plt.figure(figsize=(15, 12))
+    sns.heatmap(
+        cm, 
+        annot=True, 
+        fmt="d", 
+        cmap="Blues", 
+        xticklabels=unique_labels, 
+        yticklabels=unique_labels
+    )
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.title('Confusion Matrix')
+    plt.tight_layout()
     
     # 保存混淆矩阵图
-    cm_path = os.path.join(args.output, "confusion_matrix.png")
-    plt.savefig(cm_path, dpi=300, bbox_inches="tight")
-    print(f"混淆矩阵已保存至 {cm_path}")
+    cm_path = os.path.join(args.output, 'confusion_matrix.png')
+    plt.savefig(cm_path)
+    logger.info(f"混淆矩阵已保存到: {cm_path}")
+    
+    # 为可读性，也保存为CSV格式
+    cm_df = pd.DataFrame(cm, index=unique_labels, columns=unique_labels)
+    cm_csv_path = os.path.join(args.output, 'confusion_matrix.csv')
+    cm_df.to_csv(cm_csv_path)
+    logger.info(f"混淆矩阵CSV格式已保存到: {cm_csv_path}")
 
-# 打印输出文件路径
-print(f"\n预测结果已保存至 {simple_output_path}")
-print(f"详细对齐分析结果已保存至 {verbose_output_path}")
-print(f"分类报告已保存至 {report_path}")
+# 保存评估指标
+metrics = {
+    'precision': float(precision),
+    'recall': float(recall),
+    'f1': float(f1),
+    'model': args.pretrained_model,
+    'model_path': args.model,
+    'model_type': 'bert-attention-crf' if args.use_attention else 'bert-crf',
+    'use_bilstm': args.use_bilstm,
+    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    'entity_metrics': {k: v for k, v in classification_report(all_true_labels, all_pred_labels, digits=4, output_dict=True).items() if k not in ['accuracy', 'macro avg', 'weighted avg']}
+}
 
-# 添加错误分析统计
-error_count = sum(1 for true, pred in zip(all_true_labels_flat, all_pred_labels_flat) if true != pred)
-total_count = len(all_true_labels_flat)
-error_rate = error_count / total_count if total_count > 0 else 0
+metrics_file = os.path.join(args.output, 'evaluation_metrics.json')
+with open(metrics_file, 'w', encoding='utf-8') as f:
+    json.dump(metrics, f, ensure_ascii=False, indent=4)
+logger.info(f"评估指标已保存到: {metrics_file}")
 
-print(f"\n错误分析统计:")
-print(f"总标签数: {total_count}")
-print(f"错误预测数: {error_count}")
-print(f"错误率: {error_rate:.4f} ({error_count}/{total_count})")
+# 生成错误分析
+error_indices = np.where(np.array(all_true_labels) != np.array(all_pred_labels))[0]
+error_examples = []
+
+for idx in error_indices:
+    error_examples.append({
+        'true_label': id2label[all_true_labels[idx][0]],
+        'predicted_label': id2label[all_pred_labels[idx][0]],
+        'count': 1
+    })
+
+# 分组相似错误
+error_counts = {}
+for error in error_examples:
+    key = f"{error['true_label']} -> {error['predicted_label']}"
+    if key in error_counts:
+        error_counts[key]['count'] += 1
+    else:
+        error_counts[key] = {
+            'true_label': error['true_label'],
+            'predicted_label': error['predicted_label'],
+            'count': 1
+        }
+
+# 按频率排序错误
+sorted_errors = sorted(error_counts.values(), key=lambda x: x['count'], reverse=True)
+
+# 保存错误分析
+error_file = os.path.join(args.output, 'error_analysis.json')
+with open(error_file, 'w', encoding='utf-8') as f:
+    json.dump(sorted_errors, f, ensure_ascii=False, indent=4)
+logger.info(f"错误分析已保存到: {error_file}")
+
+logger.info("评估完成!")
+print(f"✅ 评估完成! 结果已保存到 {args.output}")
 
 # 如果是主程序入口点
 if __name__ == "__main__":

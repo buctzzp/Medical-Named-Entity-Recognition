@@ -3,6 +3,7 @@
 import os
 import torch
 import logging
+import argparse
 import random
 import numpy as np
 from torch.utils.data import DataLoader
@@ -16,53 +17,145 @@ from model_explainability import ModelExplainer
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from seqeval.metrics import precision_score, recall_score, f1_score, classification_report
-from config import model_config, augmentation_config, optimization_config, explainability_config
+from config import model_config, augmentation_config, optimization_config, explainability_config, experiment_config
 from datetime import datetime
 import json
+from model.model_factory import ModelFactory
 
-# 设置随机种子，确保结果可复现
-def set_seed(seed=42):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+# 命令行参数
+parser = argparse.ArgumentParser(description='中文医疗NER模型训练工具')
+parser.add_argument('--pretrained_model', type=str, default=model_config['pretrained_model_name'], 
+                    help='预训练模型名称，可选：bert-base-chinese, chinese-medical-bert, pcl-medbert, cmeee-bert, mc-bert, chinese-roberta-med')
+parser.add_argument('--use_attention', action='store_true', default=model_config.get('use_attention', False), help='是否使用注意力模型')
+parser.add_argument('--use_bilstm', action='store_true', default=model_config.get('use_bilstm', False), help='是否使用BiLSTM层')
+parser.add_argument('--no_bilstm', action='store_true', help='禁用BiLSTM层（覆盖默认配置）')
+parser.add_argument('--batch_size', type=int, default=model_config['batch_size'], help='训练批次大小')
+parser.add_argument('--epochs', type=int, default=model_config['num_epochs'], help='训练轮数')
+parser.add_argument('--learning_rate', type=float, default=model_config['learning_rate'], help='学习率')
+parser.add_argument('--seed', type=int, default=42, help='随机种子')
+parser.add_argument('--use_augmentation', action='store_true', default=augmentation_config['use_data_augmentation'], help='是否使用数据增强')
+parser.add_argument('--no_augmentation', action='store_true', help='禁用数据增强（覆盖默认配置）')
+parser.add_argument('--early_stopping', type=int, default=model_config['early_stopping_patience'], help='早停耐心值')
+parser.add_argument('--save_every_epoch', action='store_true', help='是否每个epoch保存模型')
+parser.add_argument('--lstm_hidden_size', type=int, default=model_config['lstm_hidden_size'], help='LSTM隐藏层大小')
+parser.add_argument('--lstm_layers', type=int, default=model_config['lstm_layers'], help='LSTM层数')
+parser.add_argument('--use_model_pruning', action='store_true', default=optimization_config['use_model_pruning'], help='是否使用模型剪枝')
+parser.add_argument('--use_model_quantization', action='store_true', default=optimization_config['use_model_quantization'], help='是否使用模型量化')
+args = parser.parse_args()
 
-set_seed(42)
+# 设置随机种子
+torch.manual_seed(args.seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(args.seed)
+np.random.seed(args.seed)
+
+# 命令行参数覆盖配置
+batch_size = args.batch_size
+num_epochs = args.epochs
+learning_rate = args.learning_rate
+early_stopping_patience = args.early_stopping
+lstm_hidden_size = args.lstm_hidden_size
+lstm_layers = args.lstm_layers
+
+# 注意：no_bilstm 比 use_bilstm 优先级高
+use_bilstm = args.use_bilstm
+if args.no_bilstm:
+    use_bilstm = False
+
+# 注意：no_augmentation 比 use_augmentation 优先级高
+use_augmentation = args.use_augmentation
+if args.no_augmentation:
+    use_augmentation = False
+
+# 模型剪枝和量化
+use_model_pruning = args.use_model_pruning
+use_model_quantization = args.use_model_quantization
+
+# 获取模型ID用于文件命名
+model_id = args.pretrained_model.replace('-', '_')
+model_type = "attention" if args.use_attention else "base"
+bilstm_status = "with_bilstm" if use_bilstm else "no_bilstm"
+aug_status = "augmented" if use_augmentation else "no_aug"
+model_signature = f"{model_id}_{model_type}_{bilstm_status}_{aug_status}"
 
 # 检测GPU
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("✅ 是否检测到 GPU:", torch.cuda.is_available())
 if torch.cuda.is_available():
     print("🖥️ 当前 GPU 名称:", torch.cuda.get_device_name(0))
-    print("🔥 当前设备:", torch.device("cuda"))
+    print("🔥 当前设备:", device)
 else:
     print("❌ 当前使用的是 CPU")
 
-# 设置日志
-log_dir = model_config['log_dir']
+# 创建必要的目录
+results_dir = os.path.join('results', model_id)
+model_dir = os.path.join(model_config['model_dir'], model_id)
+log_dir = os.path.join(model_config['log_dir'], model_id)
+os.makedirs(results_dir, exist_ok=True)
+os.makedirs(model_dir, exist_ok=True)
 os.makedirs(log_dir, exist_ok=True)
+os.makedirs(explainability_config['visualization_output_dir'], exist_ok=True)
+
+# 设置日志
+log_filename = f'train_{model_signature}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(log_dir, f'train_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')),
+        logging.FileHandler(os.path.join(log_dir, log_filename)),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# 创建必要的目录
-os.makedirs(model_config['model_dir'], exist_ok=True)
-os.makedirs(explainability_config['visualization_output_dir'], exist_ok=True)
+# 记录训练配置信息
+logger.info("="*50)
+logger.info("医学命名实体识别模型训练开始")
+logger.info("="*50)
+logger.info(f"🚀 预训练模型: {args.pretrained_model}")
+logger.info(f"🔍 模型架构: {'BERT-Attention-CRF' if args.use_attention else 'BERT-CRF'}")
+logger.info(f"🧠 BiLSTM层: {'启用' if use_bilstm else '禁用'}")
+if use_bilstm:
+    logger.info(f"   - 隐藏层大小: {lstm_hidden_size}")
+    logger.info(f"   - LSTM层数: {lstm_layers}")
+    logger.info(f"   - 丢弃率: {model_config['lstm_dropout']}")
+logger.info(f"📈 数据增强: {'启用' if use_augmentation else '禁用'}")
+logger.info(f"⚙️ 训练参数:")
+logger.info(f"   - 批次大小: {batch_size}")
+logger.info(f"   - 训练轮数: {num_epochs}")
+logger.info(f"   - 学习率: {learning_rate}")
+logger.info(f"   - 早停耐心值: {early_stopping_patience}")
+logger.info(f"   - 每轮保存: {'启用' if args.save_every_epoch else '禁用'}")
+logger.info(f"   - 模型剪枝: {'启用' if use_model_pruning else '禁用'}")
+logger.info(f"   - 模型量化: {'启用' if use_model_quantization else '禁用'}")
+logger.info(f"模型特征签名: {model_signature}")
+logger.info(f"模型结果存储位置: {results_dir}")
+logger.info(f"模型保存位置: {model_dir}")
+logger.info("="*50)
 
-# 加载分词器
-tokenizer = BertTokenizerFast.from_pretrained(model_config['bert_model_name'])
+# 打印选择的模型
+print(f"🚀 使用预训练模型: {args.pretrained_model}")
+print(f"🔍 模型类型: {'BERT-Attention-CRF' if args.use_attention else 'BERT-CRF'}")
+print(f"🧠 BiLSTM层: {'启用' if use_bilstm else '禁用'}")
+print(f"📈 数据增强: {'启用' if use_augmentation else '禁用'}")
+print(f"📁 结果保存目录: {results_dir}")
+print(f"📁 模型保存目录: {model_dir}")
+
+# 获取可用预训练模型列表
+available_models = ModelFactory.list_available_models()
+if args.pretrained_model not in available_models:
+    logger.warning(f"⚠️ 警告: 所选模型 '{args.pretrained_model}' 不在预配置列表中。可用模型: {', '.join(available_models)}")
+    logger.warning(f"尝试直接从Hugging Face加载模型...")
+    print(f"⚠️ 警告: 所选模型 '{args.pretrained_model}' 不在预配置列表中。可用模型: {', '.join(available_models)}")
+    print(f"尝试直接从Hugging Face加载模型...")
+
+# 使用模型工厂获取与模型匹配的tokenizer
+tokenizer = ModelFactory.get_tokenizer_for_model(args.pretrained_model)
 
 # 构建标签映射
 label_list = get_label_list([
     model_config['train_path'],
-    model_config['dev_path'],
-    model_config['test_path']
+    model_config['dev_path']
 ])
 label2id = {label: i for i, label in enumerate(label_list)}
 id2label = {i: label for label, i in label2id.items()}
@@ -72,7 +165,7 @@ logger.info(f"标签总数: {num_labels}")
 logger.info(f"标签列表: {label_list}")
 
 # 数据增强
-if augmentation_config['use_data_augmentation']:
+if use_augmentation:
     logger.info("正在准备数据增强...")
     
     # 检查同义词和实体词典是否存在，不存在则创建示例词典
@@ -126,7 +219,7 @@ if augmentation_config['use_data_augmentation']:
     logger.info(f"数据增强完成: 原始样本数 {len(train_data)}, 增强后样本数 {len(all_data)}")
     
     # 保存增强后的数据
-    augmented_train_path = model_config['train_path'].replace('.txt', '_augmented.txt')
+    augmented_train_path = os.path.join(results_dir, f'train_augmented_{model_signature}.txt')
     with open(augmented_train_path, 'w', encoding='utf-8') as f:
         f.write('\n\n'.join(all_data))
     
@@ -139,27 +232,32 @@ else:
 train_dataset = NERDataset(train_path, tokenizer, label2id, model_config['max_len'])
 dev_dataset = NERDataset(model_config['dev_path'], tokenizer, label2id, model_config['max_len'])
 
-train_loader = DataLoader(train_dataset, batch_size=model_config['batch_size'], shuffle=True)
-dev_loader = DataLoader(dev_dataset, batch_size=model_config['eval_batch_size'])
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4 if torch.cuda.is_available() else 0)
+dev_loader = DataLoader(dev_dataset, batch_size=model_config['eval_batch_size'], num_workers=4 if torch.cuda.is_available() else 0)
 
-# 初始化模型
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# 使用模型工厂创建模型
+model = ModelFactory.create_model(
+    model_type='bert_attention_crf' if args.use_attention else 'bert_crf',
+    num_labels=num_labels,
+    pretrained_model_name=args.pretrained_model,
+    use_attention=args.use_attention
+)
 
-# 选择模型类型
-if model_config['use_self_attention']:
-    logger.info("使用增强版BERT-Attention-CRF模型")
-    model = BertAttentionCRF(model_config['bert_model_name'], num_labels).to(device)
-else:
-    logger.info("使用标准BERT-CRF模型")
-    model = BertCRF(model_config['bert_model_name'], num_labels).to(device)
+# 确保模型使用正确的BiLSTM设置
+if hasattr(model, 'use_bilstm'):
+    model.use_bilstm = use_bilstm
+if hasattr(model, 'lstm_hidden_size'):
+    model.lstm_hidden_size = lstm_hidden_size
+if hasattr(model, 'lstm_layers'):
+    model.lstm_layers = lstm_layers
 
-# 打印模型结构信息
-logger.info("模型结构配置:")
-logger.info(f"✓ BiLSTM层状态: {'启用' if model_config['use_bilstm'] else '禁用'}")
-if model_config['use_bilstm']:
-    logger.info(f"  - 隐藏层大小: {model_config['lstm_hidden_size']}")
-    logger.info(f"  - LSTM层数: {model_config['lstm_layers']}")
-    logger.info(f"  - Dropout率: {model_config['lstm_dropout']}")
+model.to(device)
+
+# 打印模型参数
+total_params = sum(p.numel() for p in model.parameters())
+trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+logger.info(f"模型参数: 总计 {total_params/1e6:.2f}M, 可训练 {trainable_params/1e6:.2f}M")
+print(f"📊 模型参数: 总计 {total_params/1e6:.2f}M, 可训练 {trainable_params/1e6:.2f}M")
 
 # 初始化模型优化器
 model_optimizer = ModelOptimizer(model, device)
@@ -167,12 +265,12 @@ model_optimizer = ModelOptimizer(model, device)
 # 优化器配置
 optimizer = torch.optim.AdamW(
     model.parameters(),
-    lr=model_config['learning_rate'],
+    lr=learning_rate,
     weight_decay=model_config['weight_decay']
 )
 
 # 学习率调度器（带预热）
-num_training_steps = len(train_loader) * model_config['num_epochs']
+num_training_steps = len(train_loader) * num_epochs
 num_warmup_steps = int(num_training_steps * model_config['warmup_ratio'])
 lr_scheduler = get_scheduler(
     "linear",
@@ -186,21 +284,11 @@ def evaluate_on_dev():
     model.eval()
     true_labels = []
     pred_labels = []
-    eval_loss = 0
-    num_batches = 0
-    start_time = datetime.now()
     
     with torch.no_grad():
-        for batch in dev_loader:
+        for batch in tqdm(dev_loader, desc="Evaluating"):
             batch = {k: v.to(device) for k, v in batch.items()}
             pred = model(batch['input_ids'], batch['attention_mask'], batch['token_type_ids'])
-            loss = model.crf.neg_log_likelihood(
-                pred,
-                batch['labels'],
-                batch['attention_mask']
-            )
-            eval_loss += loss.item()
-            num_batches += 1
             
             # 处理批次中的每个样本
             for i in range(batch['input_ids'].size(0)):
@@ -220,288 +308,184 @@ def evaluate_on_dev():
                 if word_labels:
                     true_labels.append(word_labels)
                     pred_labels.append(word_preds)
-    
-    # 计算评估指标
-    eval_loss = eval_loss / num_batches
+
+    # 计算整体指标
     p = precision_score(true_labels, pred_labels)
     r = recall_score(true_labels, pred_labels)
     f1 = f1_score(true_labels, pred_labels)
     
-    # 获取每个标签的详细评估报告
-    report = classification_report(true_labels, pred_labels, output_dict=True)
+    # 详细分类报告
+    report = classification_report(true_labels, pred_labels, digits=4, output_dict=True)
     
-    # 计算评估耗时
-    eval_time = (datetime.now() - start_time).total_seconds()
-    
-    return {
-        'precision': p,
-        'recall': r,
-        'f1': f1,
-        'loss': eval_loss,
-        'report': report,
-        'eval_time': eval_time,
-        'true_labels': true_labels,
-        'pred_labels': pred_labels
-    }
+    return p, r, f1, report
 
 # 训练循环
-
-# 记录训练过程中的指标
-train_history = {
-    'train_losses': [],
-    'eval_losses': [],
-    'precisions': [],
-    'recalls': [],
-    'f1_scores': [],
-    'learning_rates': []
-}
+logger.info(f"开始训练: 使用 {args.pretrained_model} 模型, {'带' if args.use_attention else '不带'}注意力, {'使用' if use_bilstm else '不使用'}BiLSTM")
 best_f1 = 0
+epoch_metrics = []
+loss_history = []
+f1_history = []
 early_stop_counter = 0
-patience = model_config['early_stopping_patience']
+patience = early_stopping_patience
 
-for epoch in range(model_config['num_epochs']):
+print("\n📈 训练开始...")
+for epoch in range(num_epochs):
     model.train()
     total_loss = 0
-    epoch_start_time = datetime.now()
-    
-    # 使用tqdm显示训练进度
-    progress_bar = tqdm(train_loader, desc=f"Epoch: {epoch + 1}/{model_config['num_epochs']}")
+    progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}")
     
     for step, batch in enumerate(progress_bar):
-        # 使用混合精度训练
-        if model_config['use_amp']:
-            loss = model_optimizer.train_step_amp(batch, optimizer)
-        else:
-            batch = {k: v.to(device) for k, v in batch.items()}
-            loss = model(batch['input_ids'], batch['attention_mask'], batch['token_type_ids'], batch['labels'])
-            loss.backward()
-            
-            # 梯度裁剪
-            torch.nn.utils.clip_grad_norm_(model.parameters(), model_config['max_grad_norm'])
-            
-            optimizer.step()
-            optimizer.zero_grad()
+        batch = {k: v.to(device) for k, v in batch.items()}
+        loss = model(**batch)
+        loss.backward()
         
+        # 梯度裁剪
+        torch.nn.utils.clip_grad_norm_(model.parameters(), model_config['max_grad_norm'])
+        
+        optimizer.step()
         lr_scheduler.step()
-        total_loss += loss
+        optimizer.zero_grad()
+        total_loss += loss.item()
         
         # 更新进度条
-        progress_bar.set_postfix({'loss': f'{loss:.4f}', 'lr': f'{optimizer.param_groups[0]["lr"]:.2e}'})
+        progress_bar.set_postfix({'loss': f'{loss.item():.4f}', 'lr': f'{optimizer.param_groups[0]["lr"]:.2e}'})
         
         # 定期记录训练信息
         if (step + 1) % model_config['logging_steps'] == 0:
             logger.info(
-                f'Epoch: {epoch+1}/{model_config["num_epochs"]}, '
+                f'Epoch: {epoch+1}/{num_epochs}, '
                 f'Step: {step+1}/{len(train_loader)}, '
-                f'Loss: {loss:.4f}, '
+                f'Loss: {loss.item():.4f}, '
                 f'LR: {optimizer.param_groups[0]["lr"]:.2e}'
             )
-    
-    # 应用模型剪枝（如果启用）
-    if optimization_config['use_model_pruning'] and epoch == optimization_config['apply_pruning_epoch']:
-        logger.info(f"在第 {epoch+1} 个epoch应用模型剪枝..")
-        model_optimizer.apply_pruning(
-            amount=optimization_config['pruning_amount'],
-            method=optimization_config['pruning_method']
-        )
-        logger.info("模型剪枝完成")
-    
-    # 计算平均损失
-    avg_train_loss = total_loss / len(train_loader)
-    current_lr = optimizer.param_groups[0]['lr']
-    
-    # 在验证集上评估
-    eval_results = evaluate_on_dev()
-    
-    # 更新训练历史
-    train_history['train_losses'].append(avg_train_loss)
-    train_history['eval_losses'].append(eval_results['loss'])
-    train_history['precisions'].append(eval_results['precision'])
-    train_history['recalls'].append(eval_results['recall'])
-    train_history['f1_scores'].append(eval_results['f1'])
-    train_history['learning_rates'].append(current_lr)
-    
-    # 计算训练耗时
-    epoch_time = (datetime.now() - epoch_start_time).total_seconds()
-    
-    # 输出详细的评估报告
-    logger.info(f"\n{'='*50}\nEpoch {epoch + 1} 训练报告\n{'='*50}")
-    logger.info(f"训练时间: {epoch_time:.2f}秒")
-    logger.info(f"评估时间: {eval_results['eval_time']:.2f}秒")
-    logger.info(f"\n训练指标:")
-    logger.info(f"  - 训练损失: {avg_train_loss:.4f}")
-    logger.info(f"  - 评估损失: {eval_results['loss']:.4f}")
-    logger.info(f"  - 学习率: {current_lr:.2e}")
-    
-    logger.info(f"\n整体评估指标:")
-    logger.info(f"  - 准确率: {eval_results['precision']:.4f}")
-    logger.info(f"  - 召回率: {eval_results['recall']:.4f}")
-    logger.info(f"  - F1值: {eval_results['f1']:.4f}")
 
-    # 输出每个标签的详细评估指标
-    logger.info(f"\n各标签评估指标:")
-    for label in label_list:
-        if label == 'O':
-            continue  # 跳过O标签
-        if label in eval_results['report']:
-            metrics = eval_results['report'][label]
-            logger.info(f"\n{label}:")
-            logger.info(f"  - 样本数: {metrics['support']}")
-            logger.info(f"  - 准确率: {metrics['precision']:.4f}")
-            logger.info(f"  - 召回率: {metrics['recall']:.4f}")
-            logger.info(f"  - F1值: {metrics['f1-score']:.4f}")
-
-    # 绘制训练过程中的指标变化图
-    if len(train_history['train_losses']) > 0:
-        plt.figure(figsize=(12, 8))
-        plt.subplot(2, 2, 1)
-        plt.plot(train_history['train_losses'], label='训练损失')
-        plt.plot(train_history['eval_losses'], label='验证损失')
-        plt.legend()
-        plt.title('损失曲线')
-
-        plt.subplot(2, 2, 2)
-        plt.plot(train_history['precisions'], label='准确率')
-        plt.plot(train_history['recalls'], label='召回率')
-        plt.plot(train_history['f1_scores'], label='F1值')
-        plt.legend()
-        plt.title('评估指标曲线')
-
-        plt.subplot(2, 2, 3)
-        plt.plot(train_history['learning_rates'], label='学习率')
-        plt.legend()
-        plt.title('学习率变化曲线')
-
-        plt.tight_layout()
-        plt.savefig(os.path.join(model_config['model_dir'], 'training_metrics.png'))
-        plt.close()
+    avg_loss = total_loss / len(train_loader)
+    loss_history.append(avg_loss)
+    
+    # 验证集评估
+    print(f"Epoch {epoch+1}, Train Loss: {avg_loss:.4f}")
+    print("正在验证...")
+    p, r, f1, report = evaluate_on_dev()
+    f1_history.append(f1)
+    
+    # 记录本轮各实体类型的指标
+    epoch_result = {
+        'epoch': epoch + 1,
+        'loss': avg_loss,
+        'precision': p,
+        'recall': r,
+        'f1': f1,
+        'entity_metrics': {}
+    }
+    
+    # 记录详细的分类报告
+    logger.info(f"Epoch {epoch+1} 验证集指标: Precision={p:.4f}, Recall={r:.4f}, F1={f1:.4f}")
+    print(f"\tDev Precision: {p:.4f}, Recall: {r:.4f}, F1: {f1:.4f}")
+    
+    # 记录每种实体类型的详细指标
+    for entity_type, metrics in report.items():
+        if entity_type != "micro avg" and entity_type != "macro avg" and entity_type != "weighted avg" and isinstance(metrics, dict):
+            entity_p = metrics['precision']
+            entity_r = metrics['recall']
+            entity_f1 = metrics['f1-score']
+            logger.info(f"实体类型 {entity_type}: P={entity_p:.4f}, R={entity_r:.4f}, F1={entity_f1:.4f}")
+            print(f"\t实体 {entity_type}: P={entity_p:.4f}, R={entity_r:.4f}, F1={entity_f1:.4f}")
+            epoch_result['entity_metrics'][entity_type] = {
+                'precision': entity_p,
+                'recall': entity_r,
+                'f1': entity_f1
+            }
+    
+    epoch_metrics.append(epoch_result)
+    
+    # 每轮保存模型（如果启用）
+    if args.save_every_epoch:
+        epoch_model_path = os.path.join(model_dir, f"epoch_{epoch+1}_{model_signature}.pth")
+        torch.save(model.state_dict(), epoch_model_path)
+        logger.info(f"Epoch {epoch+1} 模型已保存至 {epoch_model_path}")
     
     # 保存最佳模型
-    if eval_results['f1'] > best_f1:
-        best_f1 = eval_results['f1']
-        torch.save(model.state_dict(), model_config['best_model_path'])
-        
-        # 保存最佳模型的分类报告
-        report_path = os.path.join(model_config['model_dir'], 'best_classification_report.txt')
-        with open(report_path, 'w', encoding='utf-8') as f:
-            f.write(f"Best Model Classification Report (Epoch {epoch + 1})\n")
-            f.write(f"F1 Score: {best_f1:.4f}\n\n")
-            f.write(json.dumps(eval_results['report'], indent=2, ensure_ascii=False))
-        
-        logger.info(f"\n✨ 保存新的最佳模型，F1: {best_f1:.4f}")
+    if f1 > best_f1:
+        best_f1 = f1
+        model_save_path = os.path.join(model_dir, f"best_model_{model_signature}.pth")
+        torch.save(model.state_dict(), model_save_path)
+        print(f"\t✅ 新最佳模型，已保存至 {model_save_path}")
+        logger.info(f"新最佳模型 (F1={f1:.4f})，已保存至 {model_save_path}")
         early_stop_counter = 0
     else:
         early_stop_counter += 1
-        logger.info(f"\n⚠️ 未提升，EarlyStopping 计数: {early_stop_counter}/{patience}")
+        print(f"\t⚠️ 未提升，EarlyStopping 计数: {early_stop_counter}/{patience}")
         if early_stop_counter >= patience:
-            logger.info("\n🛑 提前停止训练（验证集 F1 无提升）")
+            print("\n🛑 提前停止训练（验证集 F1 无提升）")
+            logger.info(f"提前停止训练: {early_stop_counter} 轮未见提升")
             break
 
-# 如果启用了模型剪枝，移除剪枝
-if optimization_config['use_model_pruning']:
-    logger.info("移除剪枝，使权重永久保持剪枝后的值...")
-    model_optimizer.remove_pruning()
+# 保存最后模型
+final_model_path = os.path.join(model_dir, f"final_model_{model_signature}.pth")
+torch.save(model.state_dict(), final_model_path)
+print(f"\n模型训练完成，最终模型已保存至 {final_model_path}")
+logger.info(f"训练完成，最终模型已保存至 {final_model_path}")
 
-# 保存最终模型
-torch.save(model.state_dict(), model_config['final_model_path'])
-print(f"\n模型训练完成，最终模型已保存至 {model_config['final_model_path']}")
-
-# 可视化训练损失
-plt.figure()
-loss_history_cpu = [loss.cpu().item() for loss in loss_history]
-plt.plot(range(1, len(loss_history_cpu) + 1), loss_history_cpu, marker='o')
+# 可视化训练损失和F1
+plt.figure(figsize=(12, 5))
+plt.subplot(1, 2, 1)
+plt.plot(range(1, len(loss_history) + 1), loss_history, marker='o')
 plt.xlabel("Epoch")
 plt.ylabel("Average Loss")
-plt.title("Training Loss Over Epochs")
+plt.title("Training Loss")
 plt.grid(True)
-plt.savefig(os.path.join(model_config['model_dir'], "training_loss.png"))
 
-# 模型可解释性分析
-if any([explainability_config['generate_attention_visualization'],
-        explainability_config['generate_token_attention'],
-        explainability_config['generate_prediction_confidence'],
-        explainability_config['generate_html_visualization']]):
-    
-    logger.info("开始模型可解释性分析...")
-    
-    # 加载最佳模型
-    model.load_state_dict(torch.load(model_config['best_model_path']))
-    model.eval()
-    
-    # 初始化模型解释器
-    explainer = ModelExplainer(model, tokenizer, id2label, device)
-    
-    # 从验证集中选择样本进行可视化
-    with open(model_config['dev_path'], 'r', encoding='utf-8') as f:
-        dev_samples = f.read().strip().split('\n\n')
-    
-    # 限制样本数量
-    num_samples = min(explainability_config['visualization_samples'], len(dev_samples))
-    selected_samples = random.sample(dev_samples, num_samples)
-    
-    for i, sample in enumerate(selected_samples):
-        # 解析样本
-        lines = sample.strip().split('\n')
-        words = [line.split()[0] for line in lines if line.strip()]
-        text = ''.join(words)
-        
-        # 创建样本目录
-        sample_dir = os.path.join(explainability_config['visualization_output_dir'], f"sample_{i+1}")
-        os.makedirs(sample_dir, exist_ok=True)
-        
-        # 保存原始文本
-        with open(os.path.join(sample_dir, "text.txt"), "w", encoding="utf-8") as f:
-            f.write(text)
-        
-        # 生成可视化
-        if explainability_config['generate_attention_visualization']:
-            explainer.visualize_attention(text, os.path.join(sample_dir, "attention_heatmap.png"))
-        
-        if explainability_config['generate_token_attention']:
-            explainer.visualize_token_attention(text, os.path.join(sample_dir, "token_attention.png"))
-        
-        if explainability_config['generate_prediction_confidence']:
-            explainer.visualize_prediction_confidence(text, os.path.join(sample_dir, "prediction_confidence.png"))
-        
-        if explainability_config['generate_html_visualization']:
-            explainer.generate_html_visualization(text, os.path.join(sample_dir, "visualization.html"))
-    
-    logger.info(f"模型可解释性分析完成，结果保存在 {explainability_config['visualization_output_dir']}")
+plt.subplot(1, 2, 2)
+plt.plot(range(1, len(f1_history) + 1), f1_history, marker='o', color='orange')
+plt.xlabel("Epoch")
+plt.ylabel("F1 Score")
+plt.title("Validation F1")
+plt.grid(True)
 
-# 模型量化（如果启用）
-if optimization_config['use_model_quantization']:
-    logger.info("开始模型量化...")
-    
-    # 加载最佳模型
-    model.load_state_dict(torch.load(model_config['best_model_path']))
-    model.eval()
-    
+plt.tight_layout()
+metrics_chart_path = os.path.join(results_dir, f"training_metrics_{model_signature}.png")
+plt.savefig(metrics_chart_path)
+print(f"训练指标图已保存至 {metrics_chart_path}")
+logger.info(f"训练指标图已保存至 {metrics_chart_path}")
+
+# 保存训练指标记录
+metrics_json_path = os.path.join(results_dir, f"training_metrics_{model_signature}.json")
+with open(metrics_json_path, 'w', encoding='utf-8') as f:
+    json.dump({
+        'model_info': {
+            'pretrained_model': args.pretrained_model,
+            'use_attention': args.use_attention,
+            'use_bilstm': use_bilstm,
+            'use_augmentation': use_augmentation,
+            'batch_size': batch_size,
+            'epochs': num_epochs,
+            'learning_rate': learning_rate
+        },
+        'best_f1': best_f1,
+        'epochs': epoch_metrics
+    }, f, ensure_ascii=False, indent=4)
+logger.info(f"训练指标记录已保存至 {metrics_json_path}")
+
+# 打印最终结果
+print("\n🏆 训练完成!")
+print(f"最佳F1分数: {best_f1:.4f}")
+print(f"最佳模型路径: {model_save_path}")
+print(f"最终模型路径: {final_model_path}")
+print(f"详细训练记录: {metrics_json_path}")
+
+# 如果启用了实验跟踪
+if experiment_config['use_wandb']:
     try:
-        # 量化模型
-        quantized_model = model_optimizer.quantize_model(optimization_config['quantization_type'])
-        
-        # 保存量化模型
-        quantized_model_path = os.path.join(model_config['model_dir'], "quantized_model.pth")
-        model_optimizer.save_quantized_model(quantized_model_path, quantized_model)
-        
-        # 比较模型大小
-        original_size, quantized_size = model_optimizer.compare_model_sizes(
-            model_config['best_model_path'],
-            quantized_model_path
-        )
-        
-        # 保存量化结果
-        quantization_result = {
-            "original_size_mb": original_size,
-            "quantized_size_mb": quantized_size,
-            "reduction_percentage": (1 - quantized_size / original_size) * 100
-        }
-        
-        with open(os.path.join(model_config['model_dir'], "quantization_result.json"), "w") as f:
-            json.dump(quantization_result, f, indent=2)
-        
-        logger.info(f"模型量化完成，量化模型已保存至 {quantized_model_path}")
+        import wandb
+        wandb.finish()
+    except ImportError:
+        logger.warning("未安装wandb，无法结束实验跟踪。")
     except Exception as e:
-        logger.error(f"模型量化失败: {e}")
+        logger.warning(f"关闭wandb时出错: {e}")
 
-print("\n🎉 训练和优化流程全部完成!")
+print("\n🎯 评估模型: python evaluate.py --model " + model_save_path + " --pretrained_model " + args.pretrained_model + 
+      (" --use_attention" if args.use_attention else "") + (" --use_bilstm" if use_bilstm else ""))
+
+print("\n🔍 预测样例: python predict_enhanced.py --model " + model_save_path + " --pretrained_model " + args.pretrained_model + 
+      (" --use_attention" if args.use_attention else "") + (" --use_bilstm" if use_bilstm else "") + 
+      " --input '患者出现高血压和2型糖尿病，建议服用降压药。'")

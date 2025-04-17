@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from transformers import BertModel
+from transformers import BertModel, AutoModel, RobertaModel
 from torchcrf import CRF
 from config import model_config
 
@@ -13,8 +13,24 @@ class BertCRF(nn.Module):
         """
         super(BertCRF, self).__init__()
         
-        # 加载预训练的BERT模型
-        self.bert = BertModel.from_pretrained(bert_model_name)
+        # 加载预训练模型
+        available_models = model_config.get('available_pretrained_models', {})
+        if bert_model_name in available_models:
+            model_info = available_models[bert_model_name]
+            model_path = model_info['name']
+            model_type = model_info['type']
+            
+            # 根据模型类型加载相应的预训练模型
+            if model_type == 'bert':
+                self.bert = BertModel.from_pretrained(model_path)
+            elif model_type == 'roberta':
+                self.bert = RobertaModel.from_pretrained(model_path)
+            else:
+                self.bert = AutoModel.from_pretrained(model_path)
+        else:
+            # 如果不在配置中，则直接使用AutoModel加载
+            self.bert = AutoModel.from_pretrained(bert_model_name)
+        
         hidden_size = self.bert.config.hidden_size
         
         # 添加BiLSTM层（可选）
@@ -42,22 +58,28 @@ class BertCRF(nn.Module):
         # 标签平滑
         self.label_smoothing = model_config['label_smoothing']
 
-    def forward(self, input_ids, attention_mask, token_type_ids, labels=None):
+    def forward(self, input_ids, attention_mask, token_type_ids=None, labels=None):
         """前向传播
         Args:
             input_ids: 输入token的ID序列 (batch_size, seq_len)
             attention_mask: 掩码张量 (batch_size, seq_len)
-            token_type_ids: 句子类型ID (batch_size, seq_len)
+            token_type_ids: 句子类型ID (batch_size, seq_len)，对于某些模型如RoBERTa可能不需要
             labels: 标签序列 (batch_size, seq_len)
         Returns:
             训练时返回损失，预测时返回预测标签序列
         """
-        # BERT编码
-        outputs = self.bert(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids
-        )
+        # 检查模型类型并适当调整参数
+        model_inputs = {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+        }
+        
+        # 某些模型如RoBERTa不使用token_type_ids
+        if token_type_ids is not None and hasattr(self.bert, 'embeddings') and hasattr(self.bert.embeddings, 'token_type_embeddings'):
+            model_inputs['token_type_ids'] = token_type_ids
+        
+        # 获取模型编码
+        outputs = self.bert(**model_inputs)
         sequence_output = outputs.last_hidden_state
         
         # BiLSTM特征提取

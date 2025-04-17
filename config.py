@@ -2,9 +2,18 @@
 model_config = {
     # 基础配置
     'bert_model_name': 'bert-base-chinese',  # 中文预训练模型
+    # 可选的医疗领域预训练模型配置
+    'available_pretrained_models': {
+        'bert-base-chinese': {'name': 'bert-base-chinese', 'type': 'bert'},
+        'chinese-medical-bert': {'name': 'trueto/medbert-base-chinese', 'type': 'bert'},
+        'pcl-medbert': {'name': 'michael-wzhu/pcl-medbert-base-chinese', 'type': 'bert'},
+        'cmeee-bert': {'name': 'tianchi/CBLUE-CMeEE-pretrain', 'type': 'bert'},
+        'mc-bert': {'name': 'hfl/mc-bert-base', 'type': 'bert'},
+        'chinese-roberta-med': {'name': 'hfl/chinese-roberta-wwm-ext-large', 'type': 'roberta'}
+    },
     'max_len': 128,  # 保持最大序列长度
     'batch_size': 8,  # 减小batch_size以提高训练稳定性
-    'num_epochs': 20,
+    'num_epochs':10,
     'learning_rate': 5e-5,  # 增加学习率
     'early_stopping_patience': 5,  # 增加早停耐心值
     
