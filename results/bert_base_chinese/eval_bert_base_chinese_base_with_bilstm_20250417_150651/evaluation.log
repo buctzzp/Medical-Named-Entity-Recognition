@@ -1,0 +1,29 @@
+2025-04-17 15:06:51,253 - INFO - ==================================================
+2025-04-17 15:06:51,253 - INFO - 医学命名实体识别模型评估开始
+2025-04-17 15:06:51,254 - INFO - ==================================================
+2025-04-17 15:06:51,254 - INFO - 预训练模型: bert-base-chinese
+2025-04-17 15:06:51,254 - INFO - 模型类型: BERT-CRF
+2025-04-17 15:06:51,254 - INFO - BiLSTM层: 启用
+2025-04-17 15:06:51,256 - INFO - 模型签名: bert_base_chinese_base_with_bilstm
+2025-04-17 15:06:51,256 - INFO - 模型路径: checkpoints/best_model.pth
+2025-04-17 15:06:51,256 - INFO - 测试文件: data/test.txt
+2025-04-17 15:06:51,256 - INFO - 批次大小: 32
+2025-04-17 15:06:51,256 - INFO - 最大长度: 128
+2025-04-17 15:06:51,257 - INFO - ==================================================
+2025-04-17 15:06:51,589 - INFO - 标签总数: 13
+2025-04-17 15:06:51,590 - INFO - 标签列表: ['B-Anatomical', 'B-Diseases', 'B-Drug', 'B-Image', 'B-Laboratory', 'B-Operation', 'I-Anatomical', 'I-Diseases', 'I-Drug', 'I-Image', 'I-Laboratory', 'I-Operation', 'O']
+2025-04-17 15:06:54,381 - INFO - 模型加载成功: checkpoints/best_model.pth
+2025-04-17 15:06:54,603 - INFO - 测试样本数: 866
+2025-04-17 15:08:12,616 - INFO - 整体性能: Precision=0.7922, Recall=0.8354, F1=0.8132
+2025-04-17 15:08:13,442 - INFO - 
+实体类型性能指标:
+2025-04-17 15:08:13,443 - INFO -   Anatomical: P=0.7880, R=0.8464, F1=0.8161, 样本数=944
+2025-04-17 15:08:13,444 - INFO -   Diseases: P=0.7790, R=0.7914, F1=0.7852, 样本数=441
+2025-04-17 15:08:13,445 - INFO -   Drug: P=0.9181, R=0.9075, F1=0.9128, 样本数=173
+2025-04-17 15:08:13,446 - INFO -   Image: P=0.7961, R=0.8817, F1=0.8367, 样本数=93
+2025-04-17 15:08:13,446 - INFO -   Laboratory: P=0.7205, R=0.7733, F1=0.7460, 样本数=150
+2025-04-17 15:08:13,447 - INFO -   Operation: P=0.7895, R=0.8523, F1=0.8197, 样本数=88
+2025-04-17 15:08:13,449 - INFO - 评估结果已保存至: results\bert_base_chinese\eval_bert_base_chinese_base_with_bilstm_20250417_150651\evaluation_results.json
+2025-04-17 15:08:14,282 - INFO - 详细分类报告已保存至: results\bert_base_chinese\eval_bert_base_chinese_base_with_bilstm_20250417_150651\detailed_classification_report.txt
+2025-04-17 15:08:15,437 - INFO - 性能条形图已保存至: results\bert_base_chinese\eval_bert_base_chinese_base_with_bilstm_20250417_150651\entity_performance.png
+2025-04-17 15:08:15,438 - INFO - 评估完成! 结果已保存至 results\bert_base_chinese\eval_bert_base_chinese_base_with_bilstm_20250417_150651

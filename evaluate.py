@@ -56,7 +56,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='中文医疗NER模型评估工具')
     parser.add_argument('--model', type=str, default=model_config.get('best_model_path', 'models/best_model.pth'), 
                         help='模型权重路径')
-    parser.add_argument('--pretrained_model', type=str, default=model_config.get('pretrained_model_name', 'bert-base-chinese'), 
+    parser.add_argument('--pretrained_model', type=str, default=model_config.get('bert_model_name', 'bert-base-chinese'), 
                        help='预训练模型名称，需与训练时一致')
     parser.add_argument('--test_file', type=str, default=model_config.get('test_path', 'data/test.txt'), help='测试数据文件路径')
     parser.add_argument('--batch_size', type=int, default=model_config.get('eval_batch_size', 32), help='评估批次大小')
@@ -82,13 +82,15 @@ if __name__ == "__main__":
     print(f"使用设备: {device}")
 
     # 生成模型ID和签名，与train_enhanced.py和predict_enhanced.py保持一致
-    model_id = args.pretrained_model.replace('-', '_')
+    model_id = args.pretrained_model.replace('-', '_').replace('/', '_')
     model_type = "attention" if args.use_attention else "base"
     bilstm_status = "with_bilstm" if use_bilstm else "no_bilstm"
     model_signature = f"{model_id}_{model_type}_{bilstm_status}"
 
     # 根据参数选择模型路径
-    model_dir = os.path.join(model_config.get('model_dir', 'models'), model_id)
+    # 使用安全路径，避免斜杠问题
+    safe_model_id = model_id.replace('/', '_')
+    model_dir = os.path.join(model_config.get('model_dir', 'models'), safe_model_id)
     os.makedirs(model_dir, exist_ok=True)
 
     if args.model == 'best':
@@ -126,7 +128,9 @@ if __name__ == "__main__":
 
     # 设置输出目录
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    eval_dir = os.path.join(args.output_dir, model_id, f"eval_{model_signature}_{timestamp}")
+    # 使用安全路径，避免斜杠问题
+    safe_model_id = model_id.replace('/', '_')
+    eval_dir = os.path.join(args.output_dir, safe_model_id, f"eval_{model_signature}_{timestamp}")
     os.makedirs(eval_dir, exist_ok=True)
 
     # 设置日志
@@ -379,8 +383,11 @@ if __name__ == "__main__":
         
         # 如果要保存详细报告
         if args.detailed_report:
+            report_dir = os.path.join(args.output_dir, safe_model_id, "reports")
+            os.makedirs(report_dir, exist_ok=True)
+            
             try:
-                detailed_report_file = os.path.join(eval_dir, 'detailed_classification_report.txt')
+                detailed_report_file = os.path.join(report_dir, 'detailed_classification_report.txt')
                 with open(detailed_report_file, 'w', encoding='utf-8') as f:
                     f.write(classification_report(true_labels, pred_labels, digits=4))
                 logger.info(f"详细分类报告已保存至: {detailed_report_file}")
@@ -459,6 +466,9 @@ if __name__ == "__main__":
         
         # 如果需要混淆矩阵
         if args.confusion_matrix and entity_types:
+            cm_dir = os.path.join(args.output_dir, safe_model_id, "confusion_matrices")
+            os.makedirs(cm_dir, exist_ok=True)
+            
             try:
                 # 准备混淆矩阵数据
                 all_true_flat = []
@@ -499,7 +509,7 @@ if __name__ == "__main__":
                 
                 plt.tight_layout()
                 
-                confusion_path = os.path.join(eval_dir, 'confusion_matrix.png')
+                confusion_path = os.path.join(cm_dir, 'confusion_matrix.png')
                 plt.savefig(confusion_path, dpi=300, bbox_inches='tight')
                 logger.info(f"混淆矩阵已保存至: {confusion_path}")
             except Exception as e:

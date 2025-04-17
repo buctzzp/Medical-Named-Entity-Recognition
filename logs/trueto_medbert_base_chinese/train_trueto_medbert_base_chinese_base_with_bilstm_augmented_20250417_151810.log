@@ -1,0 +1,28 @@
+2025-04-17 15:18:10,976 - INFO - ==================================================
+2025-04-17 15:18:10,977 - INFO - 医学命名实体识别模型训练开始
+2025-04-17 15:18:10,977 - INFO - ==================================================
+2025-04-17 15:18:10,995 - INFO -    - 隐藏层大小: 256
+2025-04-17 15:18:10,996 - INFO -    - LSTM层数: 4
+2025-04-17 15:18:10,996 - INFO -    - 丢弃率: 0.1
+2025-04-17 15:18:11,006 - INFO -    - 批次大小: 8
+2025-04-17 15:18:11,006 - INFO -    - 训练轮数: 5
+2025-04-17 15:18:11,007 - INFO -    - 学习率: 5e-05
+2025-04-17 15:18:11,007 - INFO -    - 早停耐心值: 5
+2025-04-17 15:18:11,007 - INFO -    - 每轮保存: 禁用
+2025-04-17 15:18:11,008 - INFO -    - 模型剪枝: 禁用
+2025-04-17 15:18:11,008 - INFO -    - 模型量化: 禁用
+2025-04-17 15:18:11,008 - INFO - 模型特征签名: trueto_medbert_base_chinese_base_with_bilstm_augmented
+2025-04-17 15:18:11,008 - INFO - 模型结果存储位置: results\trueto_medbert_base_chinese
+2025-04-17 15:18:11,009 - INFO - 模型保存位置: checkpoints\trueto_medbert_base_chinese
+2025-04-17 15:18:11,009 - INFO - ==================================================
+2025-04-17 15:18:11,015 - WARNING - 尝试直接从Hugging Face加载模型...
+2025-04-17 15:18:12,960 - INFO - 标签总数: 13
+2025-04-17 15:18:12,960 - INFO - 标签列表: ['B-Anatomical', 'B-Diseases', 'B-Drug', 'B-Image', 'B-Laboratory', 'B-Operation', 'I-Anatomical', 'I-Diseases', 'I-Drug', 'I-Image', 'I-Laboratory', 'I-Operation', 'O']
+2025-04-17 15:18:12,961 - INFO - 正在准备数据增强...
+2025-04-17 15:18:12,984 - DEBUG - Building prefix dict from the default dictionary ...
+2025-04-17 15:18:12,985 - DEBUG - Loading model from cache C:\Users\27162\AppData\Local\Temp\jieba.cache
+2025-04-17 15:18:14,009 - DEBUG - Loading model cost 1.026 seconds.
+2025-04-17 15:18:14,011 - DEBUG - Prefix dict has been built successfully.
+2025-04-17 15:18:16,076 - INFO - 数据增强完成: 原始样本数 6837, 增强后样本数 11551
+2025-04-17 15:18:19,564 - INFO - 模型参数: 总计 109.11M, 可训练 109.11M
+2025-04-17 15:18:19,566 - INFO - 开始训练: 使用 trueto/medbert-base-chinese 模型, 不带注意力, 使用BiLSTM

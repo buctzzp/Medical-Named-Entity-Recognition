@@ -11,6 +11,32 @@ class ModelFactory:
     """
     
     @staticmethod
+    def get_model_info(model_name):
+        """
+        获取模型信息，支持使用简称或完整名称
+        
+        Args:
+            model_name: 模型名称（简称或完整路径）
+            
+        Returns:
+            tuple: (model_path, model_type_family, short_name)
+        """
+        available_models = model_config['available_pretrained_models']
+        
+        # 检查是否是简称
+        if model_name in available_models:
+            model_info = available_models[model_name]
+            return model_info['name'], model_info['type'], model_name
+        
+        # 检查是否是完整路径名称
+        for short_name, info in available_models.items():
+            if info['name'] == model_name:
+                return model_name, info['type'], short_name
+        
+        # 如果都不是，则假设是未配置的huggingface模型路径
+        return model_name, 'bert', None  # 默认使用BERT类型
+    
+    @staticmethod
     def create_model(model_type='bert_crf', num_labels=13, pretrained_model_name=None, use_attention=False):
         """
         创建NER模型
@@ -18,7 +44,7 @@ class ModelFactory:
         Args:
             model_type: 模型类型，可选 'bert_crf' 或 'bert_attention_crf'
             num_labels: 标签数量
-            pretrained_model_name: 预训练模型的名称，如果为None则使用配置中的默认值
+            pretrained_model_name: 预训练模型的名称或路径
             use_attention: 是否使用注意力机制
             
         Returns:
@@ -28,25 +54,17 @@ class ModelFactory:
             pretrained_model_name = 'bert-base-chinese'
         
         # 获取预训练模型的具体配置
-        available_models = model_config['available_pretrained_models']
-        if pretrained_model_name in available_models:
-            model_info = available_models[pretrained_model_name]
-            model_path = model_info['name']
-            model_type_family = model_info['type']
-        else:
-            # 如果指定的模型不在配置列表中，则使用默认配置
-            model_path = pretrained_model_name
-            model_type_family = 'bert'  # 默认使用BERT类型
+        model_path, model_type_family, _ = ModelFactory.get_model_info(pretrained_model_name)
         
-        print(f"创建模型: {model_type}, 使用预训练模型: {model_path}")
+        print(f"创建模型: {model_path}-{model_type}")
         
         # 根据模型类型创建相应的模型
         if use_attention or model_type == 'bert_attention_crf':
             model = BertAttentionCRF(model_path, num_labels)
-            print("已选择 BERT-Attention-CRF 模型架构")
+            print(f"已选择 {model_path}-Attention-CRF 模型架构")
         else:
             model = BertCRF(model_path, num_labels)
-            print("已选择 BERT-CRF 模型架构")
+            print(f"已选择 {model_path}-CRF 模型架构")
         
         return model
     
@@ -56,7 +74,7 @@ class ModelFactory:
         获取与模型匹配的分词器
         
         Args:
-            model_name: 模型名称
+            model_name: 模型名称或路径
             
         Returns:
             适合该模型的分词器
@@ -64,19 +82,12 @@ class ModelFactory:
         from transformers import AutoTokenizer, BertTokenizerFast, RobertaTokenizerFast
         
         # 获取预训练模型的具体配置
-        available_models = model_config['available_pretrained_models']
-        if model_name in available_models:
-            model_info = available_models[model_name]
-            model_path = model_info['name']
-            model_type = model_info['type']
-            
-            if model_type == 'roberta':
-                return RobertaTokenizerFast.from_pretrained(model_path)
-            else:
-                return BertTokenizerFast.from_pretrained(model_path)
+        model_path, model_type, _ = ModelFactory.get_model_info(model_name)
+        
+        if model_type == 'roberta':
+            return RobertaTokenizerFast.from_pretrained(model_path)
         else:
-            # 如果不在配置列表中，使用AutoTokenizer
-            return AutoTokenizer.from_pretrained(model_name)
+            return BertTokenizerFast.from_pretrained(model_path)
             
     @staticmethod
     def list_available_models():
@@ -84,7 +95,10 @@ class ModelFactory:
         列出所有可用的预训练模型
         
         Returns:
-            可用模型的列表
+            可用模型的列表，包括简称和完整路径
         """
         available_models = model_config['available_pretrained_models']
-        return list(available_models.keys()) 
+        # 返回所有简称和完整名称
+        all_models = list(available_models.keys())
+        all_models.extend([info['name'] for info in available_models.values()])
+        return all_models 

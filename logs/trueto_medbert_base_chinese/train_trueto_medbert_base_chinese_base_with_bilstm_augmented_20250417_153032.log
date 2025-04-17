@@ -1,0 +1,145 @@
+2025-04-17 15:30:32,269 - INFO - ==================================================
+2025-04-17 15:30:32,269 - INFO - 医学命名实体识别模型训练开始
+2025-04-17 15:30:32,269 - INFO - ==================================================
+2025-04-17 15:30:32,270 - INFO - 预训练模型: trueto/medbert-base-chinese
+2025-04-17 15:30:32,270 - INFO - 模型架构: BERT-CRF
+2025-04-17 15:30:32,270 - INFO - BiLSTM层: 启用
+2025-04-17 15:30:32,270 - INFO -    - 隐藏层大小: 256
+2025-04-17 15:30:32,271 - INFO -    - LSTM层数: 4
+2025-04-17 15:30:32,271 - INFO -    - 丢弃率: 0.1
+2025-04-17 15:30:32,271 - INFO - 数据增强: 启用
+2025-04-17 15:30:32,271 - INFO - 训练参数:
+2025-04-17 15:30:32,272 - INFO -    - 批次大小: 8
+2025-04-17 15:30:32,272 - INFO -    - 训练轮数: 5
+2025-04-17 15:30:32,272 - INFO -    - 学习率: 5e-05
+2025-04-17 15:30:32,272 - INFO -    - 早停耐心值: 5
+2025-04-17 15:30:32,272 - INFO -    - 每轮保存: 禁用
+2025-04-17 15:30:32,272 - INFO -    - 模型剪枝: 禁用
+2025-04-17 15:30:32,273 - INFO -    - 模型量化: 禁用
+2025-04-17 15:30:32,273 - INFO - 模型特征签名: trueto_medbert_base_chinese_base_with_bilstm_augmented
+2025-04-17 15:30:32,273 - INFO - 模型结果存储位置: results\trueto_medbert_base_chinese
+2025-04-17 15:30:32,273 - INFO - 模型保存位置: checkpoints\trueto_medbert_base_chinese
+2025-04-17 15:30:32,273 - INFO - ==================================================
+2025-04-17 15:30:33,970 - INFO - 标签总数: 13
+2025-04-17 15:30:33,971 - INFO - 标签列表: ['B-Anatomical', 'B-Diseases', 'B-Drug', 'B-Image', 'B-Laboratory', 'B-Operation', 'I-Anatomical', 'I-Diseases', 'I-Drug', 'I-Image', 'I-Laboratory', 'I-Operation', 'O']
+2025-04-17 15:30:33,972 - INFO - 正在准备数据增强...
+2025-04-17 15:30:33,992 - DEBUG - Building prefix dict from the default dictionary ...
+2025-04-17 15:30:33,994 - DEBUG - Loading model from cache C:\Users\27162\AppData\Local\Temp\jieba.cache
+2025-04-17 15:30:34,995 - DEBUG - Loading model cost 1.002 seconds.
+2025-04-17 15:30:34,996 - DEBUG - Prefix dict has been built successfully.
+2025-04-17 15:30:36,855 - INFO - 数据增强完成: 原始样本数 6837, 增强后样本数 11598
+2025-04-17 15:30:39,728 - INFO - 模型参数: 总计 109.11M, 可训练 109.11M
+2025-04-17 15:30:39,730 - INFO - 开始训练: 使用 trueto/medbert-base-chinese 模型, 不带注意力, 使用BiLSTM
+2025-04-17 15:31:27,740 - INFO - Epoch: 1/5, Step: 100/1450, Loss: 2.0858, LR: 6.90e-06
+2025-04-17 15:32:15,951 - INFO - Epoch: 1/5, Step: 200/1450, Loss: 1.0491, LR: 1.38e-05
+2025-04-17 15:33:03,939 - INFO - Epoch: 1/5, Step: 300/1450, Loss: 0.8020, LR: 2.07e-05
+2025-04-17 15:33:52,076 - INFO - Epoch: 1/5, Step: 400/1450, Loss: 0.8208, LR: 2.76e-05
+2025-04-17 15:34:40,347 - INFO - Epoch: 1/5, Step: 500/1450, Loss: 0.6641, LR: 3.45e-05
+2025-04-17 15:35:28,704 - INFO - Epoch: 1/5, Step: 600/1450, Loss: 0.6173, LR: 4.14e-05
+2025-04-17 15:36:17,032 - INFO - Epoch: 1/5, Step: 700/1450, Loss: 0.5140, LR: 4.83e-05
+2025-04-17 15:37:05,797 - INFO - Epoch: 1/5, Step: 800/1450, Loss: 0.6494, LR: 4.94e-05
+2025-04-17 15:37:54,511 - INFO - Epoch: 1/5, Step: 900/1450, Loss: 0.4366, LR: 4.87e-05
+2025-04-17 15:38:42,842 - INFO - Epoch: 1/5, Step: 1000/1450, Loss: 0.5177, LR: 4.79e-05
+2025-04-17 15:39:31,069 - INFO - Epoch: 1/5, Step: 1100/1450, Loss: 0.4750, LR: 4.71e-05
+2025-04-17 15:40:19,344 - INFO - Epoch: 1/5, Step: 1200/1450, Loss: 0.5284, LR: 4.64e-05
+2025-04-17 15:41:07,714 - INFO - Epoch: 1/5, Step: 1300/1450, Loss: 0.3422, LR: 4.56e-05
+2025-04-17 15:41:56,067 - INFO - Epoch: 1/5, Step: 1400/1450, Loss: 0.3533, LR: 4.48e-05
+2025-04-17 15:42:40,419 - INFO - Epoch 1 验证集指标: Precision=0.7249, Recall=0.7713, F1=0.7474
+2025-04-17 15:42:40,420 - INFO - 实体类型 Anatomical: P=0.8015, R=0.8114, F1=0.8064
+2025-04-17 15:42:40,421 - INFO - 实体类型 Diseases: P=0.5802, R=0.6927, F1=0.6315
+2025-04-17 15:42:40,422 - INFO - 实体类型 Drug: P=0.8299, R=0.8010, F1=0.8152
+2025-04-17 15:42:40,423 - INFO - 实体类型 Image: P=0.5581, R=0.7059, F1=0.6234
+2025-04-17 15:42:40,424 - INFO - 实体类型 Laboratory: P=0.7050, R=0.7424, F1=0.7232
+2025-04-17 15:42:40,424 - INFO - 实体类型 Operation: P=0.8090, R=0.7912, F1=0.8000
+2025-04-17 15:42:41,076 - INFO - 新最佳模型 (F1=0.7474)，已保存至 checkpoints\trueto_medbert_base_chinese\best_model_trueto_medbert_base_chinese_base_with_bilstm_augmented.pth
+2025-04-17 15:43:29,549 - INFO - Epoch: 2/5, Step: 100/1450, Loss: 0.3702, LR: 4.37e-05
+2025-04-17 15:44:18,200 - INFO - Epoch: 2/5, Step: 200/1450, Loss: 0.5816, LR: 4.29e-05
+2025-04-17 15:45:07,007 - INFO - Epoch: 2/5, Step: 300/1450, Loss: 0.4521, LR: 4.21e-05
+2025-04-17 15:45:55,609 - INFO - Epoch: 2/5, Step: 400/1450, Loss: 0.3401, LR: 4.14e-05
+2025-04-17 15:46:44,462 - INFO - Epoch: 2/5, Step: 500/1450, Loss: 0.4326, LR: 4.06e-05
+2025-04-17 15:47:33,256 - INFO - Epoch: 2/5, Step: 600/1450, Loss: 0.3920, LR: 3.98e-05
+2025-04-17 15:48:22,196 - INFO - Epoch: 2/5, Step: 700/1450, Loss: 0.4132, LR: 3.91e-05
+2025-04-17 15:49:11,302 - INFO - Epoch: 2/5, Step: 800/1450, Loss: 0.3650, LR: 3.83e-05
+2025-04-17 15:50:00,331 - INFO - Epoch: 2/5, Step: 900/1450, Loss: 0.3362, LR: 3.75e-05
+2025-04-17 15:50:49,628 - INFO - Epoch: 2/5, Step: 1000/1450, Loss: 0.3215, LR: 3.68e-05
+2025-04-17 15:51:38,743 - INFO - Epoch: 2/5, Step: 1100/1450, Loss: 0.3445, LR: 3.60e-05
+2025-04-17 15:52:27,799 - INFO - Epoch: 2/5, Step: 1200/1450, Loss: 0.3868, LR: 3.52e-05
+2025-04-17 15:53:16,491 - INFO - Epoch: 2/5, Step: 1300/1450, Loss: 0.3237, LR: 3.45e-05
+2025-04-17 15:54:05,060 - INFO - Epoch: 2/5, Step: 1400/1450, Loss: 0.3170, LR: 3.37e-05
+2025-04-17 15:54:49,973 - INFO - Epoch 2 验证集指标: Precision=0.7792, Recall=0.8054, F1=0.7921
+2025-04-17 15:54:49,974 - INFO - 实体类型 Anatomical: P=0.8201, R=0.7935, F1=0.8066
+2025-04-17 15:54:49,975 - INFO - 实体类型 Diseases: P=0.6606, R=0.7683, F1=0.7104
+2025-04-17 15:54:49,976 - INFO - 实体类型 Drug: P=0.8814, R=0.8507, F1=0.8658
+2025-04-17 15:54:49,976 - INFO - 实体类型 Image: P=0.8018, R=0.8725, F1=0.8357
+2025-04-17 15:54:49,977 - INFO - 实体类型 Laboratory: P=0.7383, R=0.8333, F1=0.7829
+2025-04-17 15:54:49,978 - INFO - 实体类型 Operation: P=0.8511, R=0.8791, F1=0.8649
+2025-04-17 15:54:50,639 - INFO - 新最佳模型 (F1=0.7921)，已保存至 checkpoints\trueto_medbert_base_chinese\best_model_trueto_medbert_base_chinese_base_with_bilstm_augmented.pth
+2025-04-17 15:55:39,320 - INFO - Epoch: 3/5, Step: 100/1450, Loss: 0.3479, LR: 3.26e-05
+2025-04-17 15:56:27,673 - INFO - Epoch: 3/5, Step: 200/1450, Loss: 0.3117, LR: 3.18e-05
+2025-04-17 15:57:16,109 - INFO - Epoch: 3/5, Step: 300/1450, Loss: 0.3901, LR: 3.10e-05
+2025-04-17 15:58:04,655 - INFO - Epoch: 3/5, Step: 400/1450, Loss: 0.3589, LR: 3.03e-05
+2025-04-17 15:58:53,667 - INFO - Epoch: 3/5, Step: 500/1450, Loss: 0.4161, LR: 2.95e-05
+2025-04-17 15:59:42,703 - INFO - Epoch: 3/5, Step: 600/1450, Loss: 0.3703, LR: 2.87e-05
+2025-04-17 16:00:31,196 - INFO - Epoch: 3/5, Step: 700/1450, Loss: 0.4254, LR: 2.80e-05
+2025-04-17 16:01:19,757 - INFO - Epoch: 3/5, Step: 800/1450, Loss: 0.3153, LR: 2.72e-05
+2025-04-17 16:02:09,241 - INFO - Epoch: 3/5, Step: 900/1450, Loss: 0.3837, LR: 2.64e-05
+2025-04-17 16:02:57,949 - INFO - Epoch: 3/5, Step: 1000/1450, Loss: 0.3373, LR: 2.57e-05
+2025-04-17 16:03:46,537 - INFO - Epoch: 3/5, Step: 1100/1450, Loss: 0.4712, LR: 2.49e-05
+2025-04-17 16:04:35,127 - INFO - Epoch: 3/5, Step: 1200/1450, Loss: 0.3174, LR: 2.41e-05
+2025-04-17 16:05:23,693 - INFO - Epoch: 3/5, Step: 1300/1450, Loss: 0.3189, LR: 2.34e-05
+2025-04-17 16:06:12,303 - INFO - Epoch: 3/5, Step: 1400/1450, Loss: 0.3514, LR: 2.26e-05
+2025-04-17 16:06:57,509 - INFO - Epoch 3 验证集指标: Precision=0.7993, Recall=0.8136, F1=0.8063
+2025-04-17 16:06:57,510 - INFO - 实体类型 Anatomical: P=0.8061, R=0.8025, F1=0.8043
+2025-04-17 16:06:57,511 - INFO - 实体类型 Diseases: P=0.7206, R=0.7683, F1=0.7437
+2025-04-17 16:06:57,511 - INFO - 实体类型 Drug: P=0.8950, R=0.8905, F1=0.8928
+2025-04-17 16:06:57,512 - INFO - 实体类型 Image: P=0.8273, R=0.8922, F1=0.8585
+2025-04-17 16:06:57,513 - INFO - 实体类型 Laboratory: P=0.8134, R=0.8258, F1=0.8195
+2025-04-17 16:06:57,514 - INFO - 实体类型 Operation: P=0.8571, R=0.8571, F1=0.8571
+2025-04-17 16:06:58,176 - INFO - 新最佳模型 (F1=0.8063)，已保存至 checkpoints\trueto_medbert_base_chinese\best_model_trueto_medbert_base_chinese_base_with_bilstm_augmented.pth
+2025-04-17 16:07:47,204 - INFO - Epoch: 4/5, Step: 100/1450, Loss: 0.3071, LR: 2.15e-05
+2025-04-17 16:08:36,122 - INFO - Epoch: 4/5, Step: 200/1450, Loss: 0.3094, LR: 2.07e-05
+2025-04-17 16:09:24,850 - INFO - Epoch: 4/5, Step: 300/1450, Loss: 0.3147, LR: 1.99e-05
+2025-04-17 16:10:13,574 - INFO - Epoch: 4/5, Step: 400/1450, Loss: 0.3145, LR: 1.92e-05
+2025-04-17 16:11:02,622 - INFO - Epoch: 4/5, Step: 500/1450, Loss: 0.3382, LR: 1.84e-05
+2025-04-17 16:11:51,901 - INFO - Epoch: 4/5, Step: 600/1450, Loss: 0.4266, LR: 1.76e-05
+2025-04-17 16:12:40,526 - INFO - Epoch: 4/5, Step: 700/1450, Loss: 0.3191, LR: 1.69e-05
+2025-04-17 16:13:29,083 - INFO - Epoch: 4/5, Step: 800/1450, Loss: 0.3379, LR: 1.61e-05
+2025-04-17 16:14:17,643 - INFO - Epoch: 4/5, Step: 900/1450, Loss: 0.3230, LR: 1.53e-05
+2025-04-17 16:15:06,187 - INFO - Epoch: 4/5, Step: 1000/1450, Loss: 0.3057, LR: 1.46e-05
+2025-04-17 16:15:54,791 - INFO - Epoch: 4/5, Step: 1100/1450, Loss: 0.3127, LR: 1.38e-05
+2025-04-17 16:16:43,456 - INFO - Epoch: 4/5, Step: 1200/1450, Loss: 0.3413, LR: 1.30e-05
+2025-04-17 16:17:32,067 - INFO - Epoch: 4/5, Step: 1300/1450, Loss: 0.3092, LR: 1.23e-05
+2025-04-17 16:18:20,612 - INFO - Epoch: 4/5, Step: 1400/1450, Loss: 0.3053, LR: 1.15e-05
+2025-04-17 16:19:05,064 - INFO - Epoch 4 验证集指标: Precision=0.8106, Recall=0.8211, F1=0.8158
+2025-04-17 16:19:05,065 - INFO - 实体类型 Anatomical: P=0.8258, R=0.8147, F1=0.8202
+2025-04-17 16:19:05,067 - INFO - 实体类型 Diseases: P=0.7192, R=0.7872, F1=0.7517
+2025-04-17 16:19:05,067 - INFO - 实体类型 Drug: P=0.9005, R=0.9005, F1=0.9005
+2025-04-17 16:19:05,068 - INFO - 实体类型 Image: P=0.8598, R=0.9020, F1=0.8804
+2025-04-17 16:19:05,069 - INFO - 实体类型 Laboratory: P=0.8500, R=0.7727, F1=0.8095
+2025-04-17 16:19:05,070 - INFO - 实体类型 Operation: P=0.8191, R=0.8462, F1=0.8324
+2025-04-17 16:19:05,716 - INFO - 新最佳模型 (F1=0.8158)，已保存至 checkpoints\trueto_medbert_base_chinese\best_model_trueto_medbert_base_chinese_base_with_bilstm_augmented.pth
+2025-04-17 16:19:54,266 - INFO - Epoch: 5/5, Step: 100/1450, Loss: 0.3223, LR: 1.03e-05
+2025-04-17 16:20:42,720 - INFO - Epoch: 5/5, Step: 200/1450, Loss: 0.3106, LR: 9.58e-06
+2025-04-17 16:21:31,246 - INFO - Epoch: 5/5, Step: 300/1450, Loss: 0.3123, LR: 8.81e-06
+2025-04-17 16:22:19,795 - INFO - Epoch: 5/5, Step: 400/1450, Loss: 0.3318, LR: 8.05e-06
+2025-04-17 16:23:08,289 - INFO - Epoch: 5/5, Step: 500/1450, Loss: 0.3077, LR: 7.28e-06
+2025-04-17 16:23:56,707 - INFO - Epoch: 5/5, Step: 600/1450, Loss: 0.3608, LR: 6.51e-06
+2025-04-17 16:24:45,163 - INFO - Epoch: 5/5, Step: 700/1450, Loss: 0.3199, LR: 5.75e-06
+2025-04-17 16:25:33,601 - INFO - Epoch: 5/5, Step: 800/1450, Loss: 0.3030, LR: 4.98e-06
+2025-04-17 16:26:22,139 - INFO - Epoch: 5/5, Step: 900/1450, Loss: 0.3162, LR: 4.21e-06
+2025-04-17 16:27:10,604 - INFO - Epoch: 5/5, Step: 1000/1450, Loss: 0.3359, LR: 3.45e-06
+2025-04-17 16:27:59,136 - INFO - Epoch: 5/5, Step: 1100/1450, Loss: 0.3148, LR: 2.68e-06
+2025-04-17 16:28:47,607 - INFO - Epoch: 5/5, Step: 1200/1450, Loss: 0.3055, LR: 1.92e-06
+2025-04-17 16:29:36,070 - INFO - Epoch: 5/5, Step: 1300/1450, Loss: 0.3051, LR: 1.15e-06
+2025-04-17 16:30:24,587 - INFO - Epoch: 5/5, Step: 1400/1450, Loss: 0.3176, LR: 3.83e-07
+2025-04-17 16:31:09,236 - INFO - Epoch 5 验证集指标: Precision=0.8109, Recall=0.8276, F1=0.8192
+2025-04-17 16:31:09,238 - INFO - 实体类型 Anatomical: P=0.8176, R=0.8103, F1=0.8139
+2025-04-17 16:31:09,238 - INFO - 实体类型 Diseases: P=0.7171, R=0.7849, F1=0.7494
+2025-04-17 16:31:09,239 - INFO - 实体类型 Drug: P=0.9118, R=0.9254, F1=0.9185
+2025-04-17 16:31:09,240 - INFO - 实体类型 Image: P=0.8774, R=0.9118, F1=0.8942
+2025-04-17 16:31:09,240 - INFO - 实体类型 Laboratory: P=0.8819, R=0.8485, F1=0.8649
+2025-04-17 16:31:09,241 - INFO - 实体类型 Operation: P=0.8211, R=0.8571, F1=0.8387
+2025-04-17 16:31:09,902 - INFO - 新最佳模型 (F1=0.8192)，已保存至 checkpoints\trueto_medbert_base_chinese\best_model_trueto_medbert_base_chinese_base_with_bilstm_augmented.pth
+2025-04-17 16:31:10,791 - INFO - 训练完成，最终模型已保存至 checkpoints\trueto_medbert_base_chinese\final_model_trueto_medbert_base_chinese_base_with_bilstm_augmented.pth
+2025-04-17 16:31:11,434 - INFO - 训练指标图已保存至 results\trueto_medbert_base_chinese\training_metrics_trueto_medbert_base_chinese_base_with_bilstm_augmented.png
+2025-04-17 16:31:11,436 - INFO - 训练指标记录已保存至 results\trueto_medbert_base_chinese\training_metrics_trueto_medbert_base_chinese_base_with_bilstm_augmented.json

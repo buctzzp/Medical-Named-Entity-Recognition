@@ -1,3 +1,0 @@
-2025-04-08 22:28:38,674 - INFO - 标签总数: 13
-2025-04-08 22:28:38,674 - INFO - 标签列表: ['B-Anatomical', 'B-Diseases', 'B-Drug', 'B-Image', 'B-Laboratory', 'B-Operation', 'I-Anatomical', 'I-Diseases', 'I-Drug', 'I-Image', 'I-Laboratory', 'I-Operation', 'O']
-2025-04-08 22:28:39,082 - INFO - 使用标准BERT-CRF模型

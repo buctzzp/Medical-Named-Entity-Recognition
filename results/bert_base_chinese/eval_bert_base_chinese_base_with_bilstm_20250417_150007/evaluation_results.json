@@ -1,0 +1,59 @@
+{
+    "model_info": {
+        "pretrained_model": "bert-base-chinese",
+        "model_signature": "bert_base_chinese_base_with_bilstm",
+        "model_path": "checkpoints/best_model.pth",
+        "use_attention": false,
+        "use_bilstm": true
+    },
+    "eval_info": {
+        "test_file": "data/test.txt",
+        "num_samples": 866,
+        "timestamp": "20250417_150007"
+    },
+    "metrics": {
+        "overall": {
+            "precision": 0.7921686746987951,
+            "recall": 0.8353626257278983,
+            "f1": 0.8131924761659366
+        },
+        "entity_metrics": {
+            "Anatomical": {
+                "precision": 0.7879684418145957,
+                "recall": 0.8463983050847458,
+                "f1": 0.8161389172625129,
+                "support": 944
+            },
+            "Diseases": {
+                "precision": 0.7790178571428571,
+                "recall": 0.7913832199546486,
+                "f1": 0.7851518560179978,
+                "support": 441
+            },
+            "Drug": {
+                "precision": 0.9181286549707602,
+                "recall": 0.9075144508670521,
+                "f1": 0.9127906976744187,
+                "support": 173
+            },
+            "Image": {
+                "precision": 0.7961165048543689,
+                "recall": 0.8817204301075269,
+                "f1": 0.836734693877551,
+                "support": 93
+            },
+            "Laboratory": {
+                "precision": 0.7204968944099379,
+                "recall": 0.7733333333333333,
+                "f1": 0.7459807073954984,
+                "support": 150
+            },
+            "Operation": {
+                "precision": 0.7894736842105263,
+                "recall": 0.8522727272727273,
+                "f1": 0.819672131147541,
+                "support": 88
+            }
+        }
+    }
+}

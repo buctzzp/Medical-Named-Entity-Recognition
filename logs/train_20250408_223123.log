@@ -1,7 +1,0 @@
-2025-04-08 22:31:24,036 - INFO - 标签总数: 13
-2025-04-08 22:31:24,037 - INFO - 标签列表: ['B-Anatomical', 'B-Diseases', 'B-Drug', 'B-Image', 'B-Laboratory', 'B-Operation', 'I-Anatomical', 'I-Diseases', 'I-Drug', 'I-Image', 'I-Laboratory', 'I-Operation', 'O']
-2025-04-08 22:31:24,402 - INFO - 使用标准BERT-CRF模型
-2025-04-08 22:31:25,654 - INFO - 模型结构配置:
-2025-04-08 22:31:25,659 - INFO -   - 隐藏层大小: 512
-2025-04-08 22:31:25,659 - INFO -   - LSTM层数: 5
-2025-04-08 22:31:25,659 - INFO -   - Dropout率: 0.1

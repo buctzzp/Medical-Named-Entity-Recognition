@@ -23,7 +23,7 @@ parser.add_argument('--output', type=str, help='输出文件路径，不提供�
 parser.add_argument('--model', type=str, default=model_config['best_model_path'], help='模型权重路径')
 parser.add_argument('--format', type=str, choices=['json', 'text', 'bio'], default='json', help='输出格式：json, text, bio')
 parser.add_argument('--batch_size', type=int, default=model_config['eval_batch_size'], help='批处理大小')
-parser.add_argument('--pretrained_model', type=str, default=model_config['pretrained_model_name'], 
+parser.add_argument('--pretrained_model', type=str, default=model_config['bert_model_name'], 
                     help='预训练模型名称，可选：bert-base-chinese, chinese-medical-bert, pcl-medbert, cmeee-bert, mc-bert, chinese-roberta-med')
 parser.add_argument('--use_attention', action='store_true', default=model_config.get('use_attention', False), help='是否使用注意力模型')
 parser.add_argument('--use_bilstm', action='store_true', default=model_config.get('use_bilstm', False), help='是否使用BiLSTM层')
@@ -40,7 +40,7 @@ if args.no_bilstm:
     use_bilstm = False
 
 # 生成模型ID和签名，与train_enhanced.py保持一致
-model_id = args.pretrained_model.replace('-', '_')
+model_id = args.pretrained_model.replace('-', '_').replace('/', '_')
 model_type = "attention" if args.use_attention else "base"
 bilstm_status = "with_bilstm" if use_bilstm else "no_bilstm"
 model_signature = f"{model_id}_{model_type}_{bilstm_status}"
@@ -56,12 +56,16 @@ if args.output:
 else:
     # 使用时间戳和模型信息生成输出目录和文件
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_dir = os.path.join('results', model_id)
+    # 修复路径处理，避免/被当作目录分隔符
+    safe_model_id = model_id.replace('/', '_') 
+    results_dir = os.path.join('results', safe_model_id)
     os.makedirs(results_dir, exist_ok=True)
     output_file = os.path.join(results_dir, f"predict_{model_signature}_{timestamp}.{args.format}")
 
 # 设置日志目录
-log_dir = os.path.join(model_config['log_dir'], model_id)
+# 修复路径处理，避免/被当作目录分隔符
+safe_model_id = model_id.replace('/', '_')
+log_dir = os.path.join(model_config['log_dir'], safe_model_id)
 os.makedirs(log_dir, exist_ok=True)
 
 # 设置日志输出
@@ -100,7 +104,8 @@ print(f"📊 模型签名: {model_signature}")
 print(f"📁 输出文件: {output_file}")
 
 # 根据参数选择模型路径
-model_dir = os.path.join(model_config['model_dir'], model_id)
+safe_model_id = model_id.replace('/', '_')
+model_dir = os.path.join(model_config['model_dir'], safe_model_id)
 os.makedirs(model_dir, exist_ok=True)
 
 if args.model == 'best':
