@@ -5,19 +5,16 @@ import torch
 import argparse
 import json
 from transformers import BertTokenizerFast
-from model.model_factory import ModelFactory
-from utils import get_label_list
-from model_explainability import ModelExplainer
-from config import model_config, explainability_config
-from tqdm import tqdm
-import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 from datetime import datetime
 import logging
 import time
-from model.bert_crf_model import BertCRF
-from model.bert_attention_crf_model import BertAttentionCRF
+from model.model_factory import ModelFactory
+from utils import get_label_list, clean_entity_name
+from config import model_config
 
 # 命令行参数解析
 parser = argparse.ArgumentParser(description='中文医疗NER模型预测工具')
@@ -73,7 +70,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_file),
+        logging.FileHandler(log_file, encoding='utf-8'),  # 指定编码为utf-8
         logging.StreamHandler()
     ]
 )
@@ -83,17 +80,24 @@ logger = logging.getLogger(__name__)
 logger.info("="*50)
 logger.info("医学命名实体识别预测开始")
 logger.info("="*50)
-logger.info(f"🚀 预训练模型: {args.pretrained_model}")
-logger.info(f"🔍 模型类型: {'BERT-Attention-CRF' if args.use_attention else 'BERT-CRF'}")
-logger.info(f"🧠 BiLSTM层: {'启用' if use_bilstm else '禁用'}")
-logger.info(f"📊 模型签名: {model_signature}")
-logger.info(f"📁 输出文件: {output_file}")
+logger.info(f"预训练模型: {args.pretrained_model}")
+logger.info(f"模型类型: {'BERT-Attention-CRF' if args.use_attention else 'BERT-CRF'}")
+logger.info(f"BiLSTM层: {'启用' if use_bilstm else '禁用'}")
+logger.info(f"模型签名: {model_signature}")
+logger.info(f"输出文件: {output_file}")
 logger.info(f"输入: {'交互模式' if not args.input else args.input}")
 logger.info(f"输出格式: {args.format}")
 logger.info(f"批次大小: {args.batch_size}")
 logger.info(f"最大序列长度: {args.max_length}")
 logger.info(f"详细输出: {args.detailed}")
 logger.info("="*50)
+
+# 控制台输出可以保留emoji
+print(f"🚀 使用预训练模型: {args.pretrained_model}")
+print(f"🔍 模型类型: {'BERT-Attention-CRF' if args.use_attention else 'BERT-CRF'}")
+print(f"🧠 BiLSTM层: {'启用' if use_bilstm else '禁用'}")
+print(f"📊 模型签名: {model_signature}")
+print(f"📁 输出文件: {output_file}")
 
 # 根据参数选择模型路径
 model_dir = os.path.join(model_config['model_dir'], model_id)
@@ -164,32 +168,27 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"使用设备: {device}")
 print(f"💻 使用设备: {device}")
 
-# 使用模型工厂创建模型和获取分词器
+# 使用模型工厂获取与模型匹配的tokenizer
 tokenizer = ModelFactory.get_tokenizer_for_model(args.pretrained_model)
-  
-# 根据参数选择模型类型
-if args.use_attention:
-    model = BertAttentionCRF.from_pretrained(
-        args.pretrained_model,
-        num_labels=num_labels,
-        use_bilstm=use_bilstm,
-        lstm_hidden_size=model_config['lstm_hidden_size'],
-        lstm_layers=model_config['lstm_layers'],
-        lstm_dropout=model_config['lstm_dropout'],
-        attention_size=model_config['attention_size'],
-        num_attention_heads=model_config['num_attention_heads'],
-        attention_dropout=model_config['attention_dropout'],
-        hidden_dropout=model_config['hidden_dropout']
-    )
-else:
-    model = BertCRF.from_pretrained(
-        args.pretrained_model,
-        num_labels=num_labels,
-        use_bilstm=use_bilstm,
-        lstm_hidden_size=model_config['lstm_hidden_size'],
-        lstm_layers=model_config['lstm_layers'],
-        lstm_dropout=model_config['lstm_dropout']
-    )
+
+# 加载模型 - 使用ModelFactory正确创建模型
+model_type_str = 'bert_attention_crf' if args.use_attention else 'bert_crf'
+model = ModelFactory.create_model(
+    model_type=model_type_str,
+    num_labels=num_labels,
+    pretrained_model_name=args.pretrained_model
+)
+
+# 设置模型的BiLSTM参数（如果适用）
+if hasattr(model, 'use_bilstm'):
+    model.use_bilstm = use_bilstm
+    # 更新BiLSTM相关配置
+    if hasattr(model, 'lstm_hidden_size'):
+        model.lstm_hidden_size = model_config.get('lstm_hidden_size', 128)
+    if hasattr(model, 'lstm_layers'):
+        model.lstm_layers = model_config.get('lstm_layers', 1)
+    if hasattr(model, 'lstm_dropout'):
+        model.lstm_dropout = model_config.get('lstm_dropout', 0.1)
 
 # 加载预训练权重
 try:
@@ -205,42 +204,41 @@ except Exception as e:
 model.to(device)
 model.eval()
 
-# 初始化模型解释器
-explainer = ModelExplainer(model, tokenizer, id2label, device)
-
 # 读取输入文件
 if args.input and os.path.exists(args.input):
     with open(args.input, 'r', encoding='utf-8') as f:
         texts = [line.strip() for line in f if line.strip()]
-    logger.info(f"从文件加载了 {len(texts)} 个文本样本")
-    print(f"📄 从文件加载了 {len(texts)} 个文本样本")
-elif args.input and not os.path.exists(args.input):
-    logger.error(f"输入文件不存在: {args.input}")
-    print(f"❌ 输入文件不存在: {args.input}")
-    texts = [args.input]  # 将输入参数作为单个文本样本
-    logger.info("将命令行参数作为单个文本样本处理")
-    print("🔤 将命令行参数作为单个文本样本处理")
+    logger.info(f"从文件加载了 {len(texts)} 条文本")
+    print(f"📄 从文件加载了 {len(texts)} 条文本")
 else:
     # 交互模式
-    logger.info("进入交互模式")
-    print("📝 请输入文本进行命名实体识别（输入'quit'或'exit'退出）：")
-    texts = []
-    while True:
-        user_input = input(">> ")
-        if user_input.lower() in ["quit", "exit", "q"]:
-            break
-        texts.append(user_input)
-    
-    if not texts:
-        logger.info("未输入任何文本，退出")
-        print("❌ 未输入任何文本，退出")
-        exit(0)
-    
-    logger.info(f"交互模式收集了 {len(texts)} 个文本样本")
+    if not args.input:
+        print("🖋️ 没有提供输入文件，进入交互模式")
+        texts = []
+        example_text = "患者出现高血压和2型糖尿病，建议服用降压药。"
+        print(f"📝 请输入文本进行预测（每行一句，输入空行开始预测，输入'exit'退出）")
+        print(f"📝 示例: {example_text}")
+        
+        while True:
+            line = input(">>> ").strip()
+            if line.lower() == 'exit':
+                if not texts:
+                    print("👋 再见!")
+                    exit(0)
+                else:
+                    break
+            elif not line and texts:
+                break
+            elif line:
+                texts.append(line)
+    else:
+        logger.error(f"输入文件不存在: {args.input}")
+        print(f"❌ 输入文件不存在: {args.input}")
+        exit(1)
 
-# 预测函数
+# 批量预测函数
 def predict_batch(batch_texts):
-    encoded_inputs = tokenizer(
+    encoded_input = tokenizer(
         batch_texts,
         padding=True,
         truncation=True,
@@ -248,240 +246,249 @@ def predict_batch(batch_texts):
         return_tensors="pt"
     )
     
-    input_ids = encoded_inputs["input_ids"].to(device)
-    attention_mask = encoded_inputs["attention_mask"].to(device)
-    token_type_ids = encoded_inputs.get("token_type_ids", None)
+    input_ids = encoded_input['input_ids'].to(device)
+    attention_mask = encoded_input['attention_mask'].to(device)
+    token_type_ids = encoded_input.get('token_type_ids', None)
     if token_type_ids is not None:
         token_type_ids = token_type_ids.to(device)
     
+    # 模型预测
     with torch.no_grad():
-        if token_type_ids is not None:
-            outputs = model(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
-        else:
-            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-            
-    # 处理不同模型输出格式  
-    if isinstance(outputs, list):
-        # CRF模型直接返回标签序列
-        predicted_label_ids = outputs
-    else:
-        # 非CRF模型，需要从logits中获取标签
-        predicted_label_ids = outputs.argmax(dim=2).cpu().numpy()
+        outputs = model(input_ids, attention_mask, token_type_ids)
     
-    # 处理结果
-    batch_results = []
+    # 处理预测结果
+    batch_entities = []
+    
     for i, text in enumerate(batch_texts):
-        text_tokens = tokenizer.convert_ids_to_tokens(input_ids[i])
-        
-        # 根据模型输出类型获取预测的标签ID
+        # 获取第i个样本的预测标签ID
         if isinstance(outputs, list):
-            pred_label_ids = outputs[i] 
+            pred_ids = outputs[i]
         else:
-            pred_label_ids = predicted_label_ids[i]
+            pred_ids = outputs[i].argmax(dim=-1).tolist()
         
-        # 处理每个token
-        result_labels = []
+        # 将token映射回原始文本
+        tokens = tokenizer.convert_ids_to_tokens(input_ids[i])
+        
         entities = []
-        current_entity = None
+        entity = None
+        orig_tokens = []
         
-        for j, (token, pred_id) in enumerate(zip(text_tokens, pred_label_ids)):
-            if token in ["[CLS]", "[SEP]", "[PAD]"] or token.startswith("<"):
-                # 如果当前有正在处理的实体，结束它
-                if current_entity is not None:
-                    entities.append(current_entity)
-                    current_entity = None
+        # 收集实体
+        for j, (token, pred_id) in enumerate(zip(tokens, pred_ids)):
+            if token in ['[CLS]', '[SEP]', '[PAD]'] or token.startswith('<'):
                 continue
                 
-            # 恢复原始文本 (处理WordPiece分词)
-            token_text = token.replace("##", "")
+            token = token.replace('##', '')
+            orig_tokens.append(token)
             
-            # 获取预测标签
-            label = id2label[pred_id]
-            result_labels.append(label)
+            pred_label = id2label.get(pred_id, 'O')
             
-            # 处理实体
-            if label.startswith("B-"):
-                # 如果当前有正在处理的实体，结束它
-                if current_entity is not None:
-                    entities.append(current_entity)
+            if pred_label.startswith('B-'):
+                if entity:
+                    entity_text = ''.join(entity['tokens']).replace('##', '')
+                    entity['text'] = entity_text
+                    # 清理实体名称
+                    entity['text'] = clean_entity_name(entity['text'])
+                    entities.append(entity)
                 
-                # 开始一个新实体
-                entity_type = label[2:]  # 去掉"B-"前缀
-                current_entity = {
-                    "type": entity_type,
-                    "text": token_text,
-                    "start": j-1 if j > 0 else 0,  # 近似位置，需要后处理校正
-                    "end": j
+                entity_type = pred_label[2:]  # 移除"B-"前缀
+                entity = {
+                    'type': entity_type,
+                    'tokens': [token],
+                    'start': len(''.join(orig_tokens[:-1])),  # 当前处理的token的位置就是实体开始位置
+                    'end': len(''.join(orig_tokens))  # 当前处理token结束的位置
                 }
-            elif label.startswith("I-") and current_entity is not None:
-                # 继续当前实体
-                entity_type = label[2:]  # 去掉"I-"前缀
-                if entity_type == current_entity["type"]:
-                    current_entity["text"] += token_text
-                    current_entity["end"] = j
-            elif current_entity is not None:
-                # 结束当前实体
-                entities.append(current_entity)
-                current_entity = None
+            elif pred_label.startswith('I-') and entity:
+                # 确保I-标签类型与当前实体类型一致
+                if pred_label[2:] == entity['type']:
+                    entity['tokens'].append(token)
+                    entity['end'] = len(''.join(orig_tokens))  # 更新实体结束位置
+            elif pred_label == 'O':
+                if entity:
+                    entity_text = ''.join(entity['tokens']).replace('##', '')
+                    entity['text'] = entity_text
+                    # 清理实体名称
+                    entity['text'] = clean_entity_name(entity['text'])
+                    entities.append(entity)
+                    entity = None
         
-        # 处理最后一个实体（如果有）
-        if current_entity is not None:
-            entities.append(current_entity)
+        # 处理最后一个实体
+        if entity:
+            entity_text = ''.join(entity['tokens']).replace('##', '')
+            entity['text'] = entity_text
+            # 清理实体名称
+            entity['text'] = clean_entity_name(entity['text'])
+            entities.append(entity)
         
-        # 校正实体位置
-        corrected_entities = []
-        for entity in entities:
-            # 在原始文本中查找实体文本，找到实际位置
-            entity_text = entity["text"]
-            entity_type = entity["type"]
-            
-            # 如果实体文本在原始文本中能找到，使用实际位置
-            start_pos = text.find(entity_text)
-            if start_pos != -1:
-                corrected_entities.append({
-                    "type": entity_type,
-                    "text": entity_text,
-                    "start": start_pos,
-                    "end": start_pos + len(entity_text)
-                })
-            else:
-                # 否则使用近似位置
-                corrected_entities.append(entity)
-        
-        # 添加到批次结果
-        batch_results.append({
-            "text": text,
-            "labels": result_labels,
-            "entities": corrected_entities
+        batch_entities.append({
+            'text': text,
+            'entities': entities
         })
     
-    return batch_results
+    return batch_entities
 
-# 分批处理文本
-results = []
-batch_size = args.batch_size
-num_batches = (len(texts) + batch_size - 1) // batch_size  # 向上取整
-
+# 对所有文本进行预测
+all_results = []
+total_time = 0
+total_entities = 0
 start_time = time.time()
-for i in tqdm(range(num_batches), desc="预测进度"):
-    start_idx = i * batch_size
-    end_idx = min(start_idx + batch_size, len(texts))
-    batch_texts = texts[start_idx:end_idx]
-    
+
+for i in range(0, len(texts), args.batch_size):
+    batch_texts = texts[i:i+args.batch_size]
     batch_results = predict_batch(batch_texts)
-    results.extend(batch_results)
-
-end_time = time.time()
-processing_time = end_time - start_time
-avg_time_per_sample = processing_time / len(texts)
-
-logger.info(f"预测完成! 处理时间: {processing_time:.2f}秒, 每样本平均: {avg_time_per_sample:.4f}秒")
-print(f"✅ 预测完成! 处理 {len(texts)} 个样本用时 {processing_time:.2f}秒, 平均每样本 {avg_time_per_sample:.4f}秒")
-
-# 根据输出格式保存结果
-if args.format == 'json':
-    # JSON格式输出 - 包含完整的实体信息
-    output_data = []
-    for result in results:
-        # 如果不需要详细信息，只保留必要的字段
-        if not args.detailed:
-            output_data.append({
-                "text": result["text"],
-                "entities": [
-                    {"type": e["type"], "text": e["text"]} 
-                    for e in result["entities"]
-                ]
-            })
-        else:
-            output_data.append(result)
+    all_results.extend(batch_results)
     
-    # 写入JSON文件
+    # 统计识别到的实体
+    for result in batch_results:
+        total_entities += len(result['entities'])
+    
+    # 进度提示
+    if len(texts) > args.batch_size:
+        print(f"📊 已处理 {min(i+args.batch_size, len(texts))}/{len(texts)} 条文本")
+
+total_time = time.time() - start_time
+logger.info(f"预测完成: 处理了 {len(texts)} 条文本, 共识别 {total_entities} 个实体, 耗时 {total_time:.2f} 秒")
+print(f"✅ 预测完成: 处理了 {len(texts)} 条文本, 共识别 {total_entities} 个实体, 耗时 {total_time:.2f} 秒")
+
+# 根据输出格式生成结果
+if args.format == 'json':
+    # 输出JSON格式
+    json_results = []
+    
+    for result in all_results:
+        json_result = {'text': result['text'], 'entities': []}
+        
+        for entity in result['entities']:
+            entity_info = {
+                'text': entity['text'],
+                'type': entity['type'],
+                'start': entity['start'],
+                'end': entity['end']
+            }
+            json_result['entities'].append(entity_info)
+        
+        json_results.append(json_result)
+    
+    # 保存JSON结果
     with open(output_file, 'w', encoding='utf-8') as f:
         if args.pretty:
-            json.dump(output_data, f, ensure_ascii=False, indent=2)
+            json.dump(json_results, f, ensure_ascii=False, indent=2)
         else:
-            json.dump(output_data, f, ensure_ascii=False)
-            
-elif args.format == 'text':
-    # 文本格式输出 - 每个样本一行，带有标注的实体
-    with open(output_file, 'w', encoding='utf-8') as f:
-        for result in results:
-            text = result["text"]
-            entities = result["entities"]
-            
-            # 按照结束位置从大到小排序，以便从后向前处理文本
-            entities = sorted(entities, key=lambda e: e["end"], reverse=True)
-            
-            # 在文本中标记实体
-            marked_text = text
-            for entity in entities:
-                start = entity["start"]
-                end = entity["end"]
-                entity_type = entity["type"]
-                
-                # 使用特殊标记突出显示实体
-                marked_text = (
-                    marked_text[:start] + 
-                    f"[{marked_text[start:end]}:{entity_type}]" + 
-                    marked_text[end:]
-                )
-            
-            f.write(f"{marked_text}\n")
-            
-elif args.format == 'bio':
-    # BIO格式输出 - 每行一个字符和对应的BIO标签
-    with open(output_file, 'w', encoding='utf-8') as f:
-        for result in results:
-            text = result["text"]
-            entities = result["entities"]
-            
-            # 创建默认标签(全部为O)
-            bio_tags = ["O"] * len(text)
-            
-            # 为所有实体分配BIO标签
-            for entity in entities:
-                start = entity["start"]
-                end = entity["end"]
-                entity_type = entity["type"]
-                
-                # 分配B标签给实体的第一个字符
-                bio_tags[start] = f"B-{entity_type}"
-                
-                # 分配I标签给实体的剩余字符
-                for i in range(start + 1, end):
-                    bio_tags[i] = f"I-{entity_type}"
-            
-            # 输出字符和对应的BIO标签
-            for char, tag in zip(text, bio_tags):
-                f.write(f"{char} {tag}\n")
-            f.write("\n")  # 不同样本之间的空行
-
-logger.info(f"预测结果已保存到: {output_file}")
-print(f"✅ 预测结果已保存到: {output_file}")
-
-# 可视化结果统计（如果样本数超过1）
-if len(results) > 1:
-    # 统计实体类型分布
-    entity_types = {}
-    for result in results:
-        for entity in result["entities"]:
-            entity_type = entity["type"]
-            if entity_type not in entity_types:
-                entity_types[entity_type] = 0
-            entity_types[entity_type] += 1
+            json.dump(json_results, f, ensure_ascii=False)
     
-    # 生成统计图表
-    if entity_types:
-        plt.figure(figsize=(10, 6))
-        plt.bar(entity_types.keys(), entity_types.values())
-        plt.title('实体类型分布')
-        plt.xlabel('实体类型')
-        plt.ylabel('数量')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
+    # 交互模式下输出结果
+    if not args.input:
+        print("\n📋 预测结果 (JSON格式):")
+        for result in json_results:
+            print(f"文本: {result['text']}")
+            if result['entities']:
+                print("识别到的实体:")
+                for entity in result['entities']:
+                    print(f"  • {entity['type']}: {entity['text']} (位置: {entity['start']}-{entity['end']})")
+            else:
+                print("没有识别到实体")
+            print()
+
+elif args.format == 'text':
+    # 输出文本标注格式
+    text_results = []
+    
+    for result in all_results:
+        text = result['text']
+        entities = sorted(result['entities'], key=lambda x: x['start'])
         
-        # 保存图表
-        chart_path = os.path.splitext(output_file)[0] + "_entity_distribution.png"
-        plt.savefig(chart_path)
-        logger.info(f"实体类型分布图已保存到: {chart_path}")
-        print(f"📊 实体类型分布图已保存到: {chart_path}")
+        # 为避免标注位置错乱，先按起始位置排序
+        entity_markers = []
+        for entity in entities:
+            entity_markers.append((entity['start'], f"[{entity['type']}:"))
+            entity_markers.append((entity['end'], f"]"))
+        
+        entity_markers.sort(key=lambda x: (x[0], x[1].endswith("]")))
+        
+        # 插入标记
+        marked_text = ""
+        last_pos = 0
+        for pos, marker in entity_markers:
+            marked_text += text[last_pos:pos] + marker
+            last_pos = pos
+        
+        marked_text += text[last_pos:]
+        text_results.append(marked_text)
+    
+    # 保存文本结果
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(text_results))
+    
+    # 交互模式下输出结果
+    if not args.input:
+        print("\n📋 预测结果 (文本标注格式):")
+        for marked_text in text_results:
+            print(marked_text)
+            print()
+
+elif args.format == 'bio':
+    # 输出BIO格式
+    bio_results = []
+    
+    for result in all_results:
+        text = result['text']
+        entities = result['entities']
+        
+        # 初始化所有字符为"O"标签
+        bio_tags = ["O"] * len(text)
+        
+        # 插入实体标签
+        for entity in entities:
+            entity_type = entity['type']
+            start = entity['start']
+            end = entity['end']
+            
+            # 设置B-标签（实体的第一个字符）
+            if start < len(bio_tags):
+                bio_tags[start] = f"B-{entity_type}"
+            
+            # 设置I-标签（实体的其他字符）
+            for i in range(start + 1, end):
+                if i < len(bio_tags):
+                    bio_tags[i] = f"I-{entity_type}"
+        
+        # 拼接字符和标签
+        bio_lines = []
+        for char, tag in zip(text, bio_tags):
+            bio_lines.append(f"{char}\t{tag}")
+        
+        bio_results.append('\n'.join(bio_lines))
+    
+    # 保存BIO结果
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write('\n\n'.join(bio_results))
+    
+    # 交互模式下输出结果
+    if not args.input:
+        print("\n📋 预测结果 (BIO格式):")
+        for bio_text in bio_results[:3]:  # 限制输出前几个结果，避免太长
+            print(bio_text)
+            print()
+        if len(bio_results) > 3:
+            print("... （更多结果已保存到文件）")
+    
+logger.info(f"结果已保存至: {output_file}")
+print(f"📁 结果已保存至: {output_file}")
+
+# 当在交互模式下时，提供一些统计信息
+if not args.input:
+    # 统计实体类型分布
+    entity_counts = {}
+    for result in all_results:
+        for entity in result['entities']:
+            entity_type = entity['type']
+            if entity_type not in entity_counts:
+                entity_counts[entity_type] = 0
+            entity_counts[entity_type] += 1
+    
+    if entity_counts:
+        print("\n📊 实体类型分布:")
+        for entity_type, count in sorted(entity_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  • {entity_type}: {count} 个")
+    else:
+        print("\n❗ 未识别到任何实体")

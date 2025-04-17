@@ -3,6 +3,7 @@ from typing import List, Tuple, Dict
 from transformers import BertTokenizerFast
 from torch.utils.data import Dataset
 import torch
+import re
 
 # 定义命名实体识别数据集类
 class NERDataset(Dataset):
@@ -95,6 +96,31 @@ def get_label_list(file_paths: List[str]) -> List[str]:
                         label_set.add(tag)  # 添加标签到集合中
     label_list = sorted(label_set)  # 将标签排序
     return label_list
+
+# 清理实体名称
+def clean_entity_name(entity_text: str) -> str:
+    """
+    清理实体名称，移除特殊字符和多余的空白
+    
+    Args:
+        entity_text: 原始实体文本
+        
+    Returns:
+        清理后的实体文本
+    """
+    # 移除前后空白
+    text = entity_text.strip()
+    
+    # 替换连续的空白字符为单个空格
+    text = re.sub(r'\s+', ' ', text)
+    
+    # 移除可能的特殊字符（保留中文、英文、数字、常用标点）
+    text = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9\.\,\;\:\?\!\(\)\[\]\{\}\-\+\=\/\\%@#$&*_，。；：？！（）【】｛｝]', '', text)
+    
+    # 移除BERT分词器产生的特殊字符
+    text = text.replace('##', '')
+    
+    return text
 
 # ===== 用于测试的示例代码（可选运行）=====
 if __name__ == "__main__":
