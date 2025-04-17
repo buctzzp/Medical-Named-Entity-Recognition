@@ -172,6 +172,21 @@ test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False
 logger.info(f"测试样本数: {len(test_dataset)}")
 print(f"📄 测试样本数: {len(test_dataset)}")
 
+# 辅助函数：确保所有值都是Python原生类型
+def convert_to_native_python_types(obj):
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return convert_to_native_python_types(obj.tolist())
+    elif isinstance(obj, dict):
+        return {key: convert_to_native_python_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_native_python_types(item) for item in obj]
+    else:
+        return obj
+
 # 评估函数
 def evaluate():
     model.eval()
@@ -233,6 +248,7 @@ def evaluate():
     # 打印每种实体类型的详细指标
     entity_metrics = {}
     print("\n实体类型性能指标:")
+    logger.info("\n实体类型性能指标:")
     for entity_type, metrics in report.items():
         if entity_type != "micro avg" and entity_type != "macro avg" and entity_type != "weighted avg" and isinstance(metrics, dict):
             entity_p = metrics['precision']
@@ -240,13 +256,13 @@ def evaluate():
             entity_f1 = metrics['f1-score']
             support = metrics['support']
             entity_metrics[entity_type] = {
-                'precision': entity_p,
-                'recall': entity_r,
-                'f1': entity_f1,
-                'support': support
+                'precision': float(entity_p),
+                'recall': float(entity_r),
+                'f1': float(entity_f1),
+                'support': int(support)
             }
             print(f"  {entity_type}: P={entity_p:.4f}, R={entity_r:.4f}, F1={entity_f1:.4f}, 样本数={support}")
-            logger.info(f"实体类型 {entity_type}: P={entity_p:.4f}, R={entity_r:.4f}, F1={entity_f1:.4f}, 样本数={support}")
+            logger.info(f"  {entity_type}: P={entity_p:.4f}, R={entity_r:.4f}, F1={entity_f1:.4f}, 样本数={support}")
     
     # 计算每个非O标签的实体类型
     entity_types = []
@@ -272,100 +288,135 @@ def evaluate():
         },
         'metrics': {
             'overall': {
-                'precision': precision,
-                'recall': recall,
-                'f1': f1
+                'precision': float(precision),
+                'recall': float(recall),
+                'f1': float(f1)
             },
             'entity_metrics': entity_metrics
         }
     }
     
+    # 确保所有值都是Python原生类型
+    results = convert_to_native_python_types(results)
+    
     # 保存JSON结果
-    results_file = os.path.join(eval_dir, 'evaluation_results.json')
-    with open(results_file, 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=4)
+    try:
+        results_file = os.path.join(eval_dir, 'evaluation_results.json')
+        with open(results_file, 'w', encoding='utf-8') as f:
+            json.dump(results, f, ensure_ascii=False, indent=4)
+        logger.info(f"评估结果已保存至: {results_file}")
+    except Exception as e:
+        logger.error(f"保存JSON结果时出错: {e}")
+        print(f"❌ 保存JSON结果时出错: {e}")
     
     # 如果要保存详细报告
     if args.detailed_report:
-        detailed_report_file = os.path.join(eval_dir, 'detailed_classification_report.txt')
-        with open(detailed_report_file, 'w', encoding='utf-8') as f:
-            f.write(classification_report(true_labels, pred_labels, digits=4))
+        try:
+            detailed_report_file = os.path.join(eval_dir, 'detailed_classification_report.txt')
+            with open(detailed_report_file, 'w', encoding='utf-8') as f:
+                f.write(classification_report(true_labels, pred_labels, digits=4))
+            logger.info(f"详细分类报告已保存至: {detailed_report_file}")
+        except Exception as e:
+            logger.error(f"保存详细分类报告时出错: {e}")
+            print(f"❌ 保存详细分类报告时出错: {e}")
     
     # 如果要保存预测结果
     if args.save_predictions:
-        predictions = []
-        for i, (words, true_ls, pred_ls) in enumerate(zip(all_sentences, true_labels, pred_labels)):
-            predictions.append({
-                'id': i,
-                'words': words,
-                'true_labels': true_ls,
-                'pred_labels': pred_ls
-            })
-        
-        pred_file = os.path.join(eval_dir, 'predictions.json')
-        with open(pred_file, 'w', encoding='utf-8') as f:
-            json.dump(predictions, f, ensure_ascii=False, indent=4)
+        try:
+            predictions = []
+            for i, (words, true_ls, pred_ls) in enumerate(zip(all_sentences, true_labels, pred_labels)):
+                predictions.append({
+                    'id': i,
+                    'words': words,
+                    'true_labels': true_ls,
+                    'pred_labels': pred_ls
+                })
+            
+            # 确保预测结果也使用Python原生类型
+            predictions = convert_to_native_python_types(predictions)
+            
+            pred_file = os.path.join(eval_dir, 'predictions.json')
+            with open(pred_file, 'w', encoding='utf-8') as f:
+                json.dump(predictions, f, ensure_ascii=False, indent=4)
+            logger.info(f"预测结果已保存至: {pred_file}")
+        except Exception as e:
+            logger.error(f"保存预测结果时出错: {e}")
+            print(f"❌ 保存预测结果时出错: {e}")
     
     # 绘制性能条形图
-    plt.figure(figsize=(12, 6))
-    metrics_df = pd.DataFrame([
-        {'Entity Type': 'Overall', 'Precision': precision, 'Recall': recall, 'F1': f1}
-    ])
-    
-    for entity_type, metrics in entity_metrics.items():
-        metrics_df = pd.concat([metrics_df, pd.DataFrame([{
-            'Entity Type': entity_type,
-            'Precision': metrics['precision'],
-            'Recall': metrics['recall'],
-            'F1': metrics['f1']
-        }])], ignore_index=True)
-    
-    metrics_melted = pd.melt(metrics_df, id_vars=['Entity Type'], 
-                            value_vars=['Precision', 'Recall', 'F1'],
-                            var_name='Metric', value_name='Score')
-    
-    sns.barplot(data=metrics_melted, x='Entity Type', y='Score', hue='Metric')
-    plt.title('NER 评估性能指标')
-    plt.xlabel('实体类型')
-    plt.ylabel('得分')
-    plt.ylim(0, 1.0)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.savefig(os.path.join(eval_dir, 'entity_performance.png'))
+    try:
+        plt.figure(figsize=(12, 6))
+        metrics_df = pd.DataFrame([
+            {'Entity Type': 'Overall', 'Precision': float(precision), 'Recall': float(recall), 'F1': float(f1)}
+        ])
+        
+        for entity_type, metrics in entity_metrics.items():
+            metrics_df = pd.concat([metrics_df, pd.DataFrame([{
+                'Entity Type': entity_type,
+                'Precision': metrics['precision'],
+                'Recall': metrics['recall'],
+                'F1': metrics['f1']
+            }])], ignore_index=True)
+        
+        metrics_melted = pd.melt(metrics_df, id_vars=['Entity Type'], 
+                                value_vars=['Precision', 'Recall', 'F1'],
+                                var_name='Metric', value_name='Score')
+        
+        sns.barplot(data=metrics_melted, x='Entity Type', y='Score', hue='Metric')
+        plt.title('NER 评估性能指标')
+        plt.xlabel('实体类型')
+        plt.ylabel('得分')
+        plt.ylim(0, 1.0)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        chart_path = os.path.join(eval_dir, 'entity_performance.png')
+        plt.savefig(chart_path)
+        logger.info(f"性能条形图已保存至: {chart_path}")
+    except Exception as e:
+        logger.error(f"绘制性能条形图时出错: {e}")
+        print(f"❌ 绘制性能条形图时出错: {e}")
     
     # 如果需要混淆矩阵
     if args.confusion_matrix and entity_types:
-        # 准备混淆矩阵数据
-        all_true_flat = []
-        all_pred_flat = []
-        
-        for true_ls, pred_ls in zip(true_labels, pred_labels):
-            # 提取实体类型（去掉BIO前缀）
-            true_entity_types = ['O' if label == 'O' else label[2:] for label in true_ls]
-            pred_entity_types = ['O' if label == 'O' else label[2:] for label in pred_ls]
+        try:
+            # 准备混淆矩阵数据
+            all_true_flat = []
+            all_pred_flat = []
             
-            all_true_flat.extend(true_entity_types)
-            all_pred_flat.extend(pred_entity_types)
-        
-        # 获取所有可能的实体类型（包括O）
-        unique_entity_types = ['O'] + entity_types
-        
-        # 构建混淆矩阵
-        confusion = np.zeros((len(unique_entity_types), len(unique_entity_types)))
-        entity_to_idx = {entity: idx for idx, entity in enumerate(unique_entity_types)}
-        
-        for true_type, pred_type in zip(all_true_flat, all_pred_flat):
-            confusion[entity_to_idx[true_type]][entity_to_idx[pred_type]] += 1
-        
-        # 绘制混淆矩阵
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(confusion, annot=True, fmt='g', cmap='Blues',
-                   xticklabels=unique_entity_types, yticklabels=unique_entity_types)
-        plt.xlabel('预测类型')
-        plt.ylabel('真实类型')
-        plt.title('实体类型混淆矩阵')
-        plt.tight_layout()
-        plt.savefig(os.path.join(eval_dir, 'confusion_matrix.png'))
+            for true_ls, pred_ls in zip(true_labels, pred_labels):
+                # 提取实体类型（去掉BIO前缀）
+                true_entity_types = ['O' if label == 'O' else label[2:] for label in true_ls]
+                pred_entity_types = ['O' if label == 'O' else label[2:] for label in pred_ls]
+                
+                all_true_flat.extend(true_entity_types)
+                all_pred_flat.extend(pred_entity_types)
+            
+            # 获取所有可能的实体类型（包括O）
+            unique_entity_types = ['O'] + entity_types
+            
+            # 构建混淆矩阵
+            confusion = np.zeros((len(unique_entity_types), len(unique_entity_types)))
+            entity_to_idx = {entity: idx for idx, entity in enumerate(unique_entity_types)}
+            
+            for true_type, pred_type in zip(all_true_flat, all_pred_flat):
+                confusion[entity_to_idx[true_type]][entity_to_idx[pred_type]] += 1
+            
+            # 绘制混淆矩阵
+            plt.figure(figsize=(10, 8))
+            sns.heatmap(confusion, annot=True, fmt='g', cmap='Blues',
+                       xticklabels=unique_entity_types, yticklabels=unique_entity_types)
+            plt.xlabel('预测类型')
+            plt.ylabel('真实类型')
+            plt.title('实体类型混淆矩阵')
+            plt.tight_layout()
+            
+            confusion_path = os.path.join(eval_dir, 'confusion_matrix.png')
+            plt.savefig(confusion_path)
+            logger.info(f"混淆矩阵已保存至: {confusion_path}")
+        except Exception as e:
+            logger.error(f"生成混淆矩阵时出错: {e}")
+            print(f"❌ 生成混淆矩阵时出错: {e}")
     
     print(f"\n✅ 评估完成! 结果已保存至 {eval_dir}")
     logger.info(f"评估完成! 结果已保存至 {eval_dir}")
